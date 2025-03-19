@@ -1,0 +1,401 @@
+---
+title: "3D processing TCRMP transects"
+author: L Olinger
+date: September 19 2024
+format:
+  pdf:
+    toc: true
+  # docx: 
+  #   toc: true
+    # toc: true
+    # number_sections: true
+# execute:
+#   eval: false
+# editor_options: 
+#   chunk_output_type: console
+# bibliography: references.bib
+---
+
+# field methods
+
+## materials
+
+-   camera + lights, memory card
+
+-   scale bars
+
+-   ...
+
+## procedure (4-pass method)
+
+-   general
+
+    -   everything with the pink ziptie belongs to the 3d camera
+
+-   camera maintenance:
+
+    -   camera cinema gear
+
+    -   settings
+
+    -   programmable buttons
+
+-   housing maintenance (every few weeks, or if any leaks detected)
+
+    -   o-rings greasing
+
+-   day before
+
+    -   check housing/o-rings
+
+    -   charge camera
+
+    -   charge external battery pack
+
+    -   charge strobe light batteries
+
+    -   memory card- initialize media
+
+-   morning of:
+
+    -   **closing / sealing cam**
+
+        -   install battery and memory card into camera
+
+        -   attach lens
+
+        -   check autofocus on (switch on lens)
+
+        -   remove camera lens cap
+
+        -   check for smudges on lens
+
+        -   pull switch on housing so that can insert camera with the cinema camera gear
+
+        -   seat camera in housing (pull out stage thing, screw camera on.
+
+        -   put camera into housing (careful to not scratch lens)
+
+        -   connect to external battery
+
+        -   add external battery to camera
+
+        -   once in housing:
+
+            -   turn alarm on
+
+            -   check for smudges on housing lens
+
+            -   check o-ring
+
+            -   close housing
+
+            -   use vacuum device until light turns green.
+
+    -   **check have materials**:
+
+        -   camera + mem card
+
+        -   housing
+
+        -   field box with extra stuff/towels, o-ring grease, cleaning materials, dry towels, etc.
+
+        -   slate
+
+        -   scale bars x 2
+
+        -   handle (clips, rope)
+
+    -   **check camera settings**:
+
+        -   CP file : C2: Canon log 3 / C.Gamut Color matrix neutral.
+
+        -   Sensor mode: full frame
+
+        -   freq 59.94hz
+
+        -   Rec = RAW LT
+
+        -   Dest = CFexpress
+
+        -   Frame = 59.94 fps
+
+![](images/IMG_5543-01.jpg){width="300"}
+
+![](images/IMG_5544-01.jpg){width="300"}
+
+![](images/IMG_5545-01.jpg){width="300"}
+
+![](images/IMG_5546-01.jpg){width="300"}
+
+![](images/IMG_5547-01.jpg){width="300"}
+
+![](images/IMG_5548-01.jpg){width="300"}
+
+![](images/IMG_5549-01.jpg){width="300"} \newpage
+
+## in water :
+
+-   **Start of dive:**
+
+    -   **B**uttons: press all buttons to prime them
+
+    -   **Power:** turn on camera and lights (hold in/out buttons 1s, press middle button). put lights to sleep (hold center 2s)
+
+    -   **L**eaks: green light stays green, if turn red, return to boat.
+
+-   **Transect and Camera Setup**
+
+    -   **S**cale bars: Place at each end of transect, one perpendicular, one parallel to transect. make sure targets visible in some footage and scale bars do not move at any time during filming.
+
+    -   **T**ime code: reset (Mode button).
+
+    -   **A**rms: extend to position lights as far apart as possible
+
+    -   **L**ights: turn on (hold Center Button 2 sec).
+
+    -   **W**hite balance: press Button 13, hold camera over white part of one of the scale bars.
+
+    -   **E**xposure: open WFM (Button 6) and false color (Button 9), Use F-stop dial to slightly overexpose, just below 100% on WFM.
+
+    -   **A**ltitude: position camera so viewfinder covers length of scale bar, note height (should be \~70cm). Maintain this altitude throughout filming.
+
+    -   **R**ecord: Record button, show transect number, autofocus
+
+-   **Filming (4 passes, 10 m each, \~1 min, consistent altitude):**
+
+    -   Pass 1: Start at one end, camera facing straight down, transect line visible in left quarter of viewfinder.
+
+    -   Pass 2: Turn around, camera facing straight down, slightly away from transect line such that viewfinder sees 1m distance from transect while keeping \~0.5 m overlap with Pass 1 (\~arm's length from transect)
+
+    -   Pass 3 & 4: Move \~20 cm from pass 1/2 position, tilt camera 45°, capture angled view of transect from either side.
+
+-   **After Filming:** press center button on each light for 2s to put light to sleep.
+
+# set up (this template)
+
+download and unzip this template
+
+rename the folder to some descriptive name of the footage going to process - eg `TCRMP_2024_postBL`
+
+open the `.Rproj` in Rstudio to knit and follow along.
+
+good idea to save this template to somewhre like dropbox where it can be constantly backed up.
+
+open and populate `00_list.csv` with the transects to be reconstructed with this template. use this to keep track of the steps, and it is used in step 3.py below.
+
+# video encoding (premiere pro)
+
+-   upload contents of memory card into computer (connect using special mem card reader compatible with CF Express, careful of magnets on the mem card reader)
+
+-   **starting with .CRM, export to MP4 without applying LUTs**
+
+-   export preset : `step0_premierepro_uhd_8k_23sept2024.eps` located in `00_scripts`
+
+-   use the following naming convention :
+
+    -   eg `TCRMP20240311_3D_BID_T1_3.MP4`
+
+        -   `TCRMP20240311` = TCRMP plus date (YYYYMMDD)
+
+        -   `3D` = demographic
+
+        -   `BID` = sitecode
+
+        -   `T1` = transect number
+
+        -   `3` = pass number (if separated vids by pass)
+
+-   export to folder `01_vids` (start backup to dropbox)
+
+-   format/wipe/initialize memory card after the videos have been uploaded
+
+# extract frames (R)
+
+requires `ffmpeg` - much faster than using av package in R.
+
+```{r, eval = F}
+library(av)
+
+npics <- 1200 # number of pics to extract
+
+# functions 
+get_video_duration <- function(video) {
+  info <- av_media_info(video)
+  return(info$duration)
+}
+
+extract_frames <- function(video, fps, dest_folder) {
+  video_name <- tools::file_path_sans_ext(basename(video))
+  output_pattern <- file.path(dest_folder, paste0(video_name, "_%04d.tiff"))
+  
+  cmd <- sprintf(
+    '"%s" -i "%s" -vf fps=%f -c:v tiff -pix_fmt rgb24 "%s"',
+    ffmpeg_path,
+    video,
+    fps,
+    output_pattern
+  )
+  
+  system(cmd)
+}
+
+get_transect_id <- function(file) {
+  sub("\\.mp4", "", sub(".mp4$", "", basename(file)))
+}
+
+# script
+directory <- paste(getwd(), "01_vids", sep = "/")
+
+files <- list.files(directory, pattern = "\\.mp4$", full.names = TRUE)
+
+ffmpeg_path <- "/opt/homebrew/bin/ffmpeg"  # Update this path based on your installation
+
+transects <- unique(sapply(files, get_transect_id))
+
+base_output_dir <- "02_pics"
+
+# iterate over transects, apply the functions to extract frames 
+for (i in 1:length(transects)) {
+  transect <- transects[i]
+  transect_files <- files[grep(paste0(transect, ".mp4$"), files)]
+  total_duration <- sum(sapply(transect_files, get_video_duration))
+  frames_per_part <- sapply(transect_files, function(x) {
+    duration <- get_video_duration(x)
+    return(round(npics * (duration / total_duration)))
+  })
+  Folder1 <- file.path(base_output_dir, transect)
+  dir.create(Folder1, showWarnings = FALSE, recursive = TRUE)
+  for (j in seq_along(transect_files)) {
+    video_file <- transect_files[j]
+    duration <- get_video_duration(video_file)
+    num_frames <- frames_per_part[j]
+    fps <- num_frames / duration
+    extract_frames(video_file, fps, Folder1)
+  }
+}
+```
+
+# OMITTED editing photos (lightroom classic)
+
+<!-- In adobe lightroom, batch edit photos -->
+
+<!-- apply `step0_lightroom_hdrphoto_r5c.xmp` located in `00_scripts` -->
+
+<!-- summary of the settings: -->
+
+<!-- -   HDR Editing Enabled: Allows for greater dynamic range adjustments with a maximum HDR value of +8.00. -->
+
+<!-- -   Auto Tone Enabled: Automatically adjusts tonal settings for optimal exposure. -->
+
+<!-- -   Lens Corrections Applied: -->
+
+<!--     -   Uses the Adobe lens profile for the Canon EF 24-70mm f/2.8 L USM lens. -->
+
+<!-- -   Vignetting correction is intensified with a scale set to 200. -->
+
+<!-- -   Most other settings remain at their default values, making this preset suitable for general use without over-processing the image. -->
+
+<!-- Export from lightroom as uncompressed tif with srgb colorspace and HDR , save in `03_editedpics/{SITE_TRANSECT}` -->
+
+::: callout-note
+in future may color correct algorithmically (eg [Sea Thru](https://www.deryaakkaynak.com/sea-thru))
+:::
+
+# 3D processing (metashape pro)
+
+## file setup
+
+-   open new metashape file
+
+-   add photos to it corresponding to each transect. can do 15-20 transects per psx, click and drag folder in edited pics for each transect into the metashape workspace where chunks are labeled.
+
+-   save as psx in `04_psx` with title as all the site names (eg BIX_BID....psx). This should match whats in list
+
+## step1.py
+
+Run `00_scripts/step1.py` : in metashape, select tools, run script, and point to the `00_scripts/step1.py`.
+
+::: callout-warning
+this is the most time consuming step, and can take a few hours per chunk.
+:::
+
+Briefly, this script aligns photos, removes points with high reconstruction uncertainty, optimizes cameras, removes points with high reprojection error, removes points with high projection accuracy, rotates the coordinate system to the bounding box, builds dense cloud, builds model, smooths model, builds UV, builds texture, generates report, and saves the project.
+
+## check models
+
+go through each chunk and check
+
+-   each transect is roughly visible when you use 0 to reset view
+
+-   there are no mirror images, or huge gaps in photos (\< 90% photos aligned should be a red flag )
+
+-   scale bars are visible
+
+disable chunks that are not good quality (eg \< 90% of photos aligned)
+
+## step2.py
+
+run `00_scripts/step2.py` : in metashape, select tools, run script, and point to the `00_scripts/step2.py`.
+
+This script automates the process of copying chunks between Metashape projects based on a CSV file. It reads the CSV, appends chunks from source projects to destination projects, and saves the results. Key steps include:
+
+-   read the CSV file location:
+
+-   Project handling: For each unique project name in the CSV, the script opens or creates a destination .psx project and appends chunks from specified source projects.
+
+-   Chunk copying: It searches for the specified chunk in the source project and appends it to the destination project.
+
+-   Saving results: After processing, the destination project is saved, ensuring all chunks are properly appended.
+
+## straighten / scale models
+
+Open each project and do the following for each chunk:
+
+**straightening**
+
+-   load textured model
+
+-   auto change brightness and contrast in one of the images; this will be applied to the texture.
+
+-   change to rotate model view and rotate the transect so the transect line lines up horizontally and is top of view.
+
+-   model- region- rotate region to view
+
+-   resize region to "crop" to transect area (do this for top xy and side views)
+
+-   use rectangular crop tool to crop to transect area bound by region. may automate this in step 4.py in the future.
+
+**scaling (only if scaling manually)**
+
+-   place markers on scales - set up at least 2 scale bars
+
+-   set distance in reference pane
+
+-   press refresh button -make sure error less than .01
+
+**save project**
+
+## step3.py
+
+run `00_scripts/step3.py` : in metashape, select tools, run script, and point to the `00_scripts/step3.py`.
+
+This script automates several key processes in Metashape, including decimation and Sketchfab uploads. The script processes multiple .psx projects based on values in a 00_list.csv file and performs the following steps for each project:
+
+-   **Model Scaling and Alignment**: If the model isn’t scaled, the script detects circular 20-bit markers and creates scale bars between specific marker pairs.
+
+-   **Gradual Selection**: Applies a point cloud filtering step using connected components, removing points based on a threshold.
+
+-   **Orthomosaic Generation**: Builds an orthomosaic from the 3D model and exports it in TIFF format.
+
+-   **Textured Model Export**: Exports the textured model in OBJ format with JPEG textures.
+
+## step4.py
+
+run `00_scripts/step4.py` : in metashape, select tools, run script, and point to the `00_scripts/step4.py`.
+
+-   **Chunk Duplication and Decimation:** Duplicates the original chunk, decimates the duplicate to a specified number of vertices (nverts), and re-textures the model if needed.
+
+-   **Sketchfab Upload**: Uploads the decimated model to Sketchfab with customizable titles, descriptions, and tags.
+
+-   **Temporary Chunk Deletion**: Deletes the duplicated temporary chunk after uploading to Sketchfab.
