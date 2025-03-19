@@ -1,140 +1,200 @@
-# Example 3D Processing Project
+# Example Project: TCRMP 3D Processing
 
-This is an example project structure demonstrating how to set up and organize a 3D coral reef processing project using the TCRMP framework.
-
-## Included Files
-
-This example includes:
-- Two real video files for processing:
-  - `video_source/TCRMP20241014_3D_BWR_T1.mov` 
-  - `video_source/TCRMP20241014_3D_BWR_T2.mov`
-- A complete directory structure for organizing data
-- A sample YAML configuration file (`analysis_params.yaml`)
+This is an example project demonstrating how to use the TCRMP 3D processing workflow. The project includes sample video files and a complete configuration setup.
 
 ## Project Structure
 
 ```
 sample_project/
-├── src/                     # Contains the configuration file
-│   └── config.py            # Loads parameters from analysis_params.yaml
-│
-├── data/                    # All input data
-│   ├── frames/              # Where extracted frames would be stored
-│   ├── processed_frames/    # Where edited frames would be stored
-│   ├── psx_input/           # Where Metashape input projects would be stored
-│   └── TCRMP_3D_Example_*_processing_status.txt  # Auto-generated status files
-│
-└── output/                  # All processing outputs
-    ├── models/              # 3D model files (.obj, etc.)
-    ├── orthomosaics/        # Orthomosaic images (.tif)
-    ├── psx/                 # Final Metashape projects
-    ├── reports/             # Processing reports
-    └── reports_initial/     # Initial reports
+├── README.md
+├── analysis_params.yaml
+├── data/                  # Will be created automatically
+│   ├── frames/           # Extracted frames
+│   ├── processed_frames/ # Edited frames
+│   └── psx_input/        # Place your Metashape project files here
+├── video_source/          # Contains your video files
+│   ├── TCRMP20241014_3D_BWR_T1.mov
+│   └── TCRMP20241014_3D_BWR_T2.mov
+├── src/                   # Processing scripts
+└── output/               # Will be created automatically
+    ├── psx/              # Final processed Metashape project files
+    ├── reports/          # Processing logs and reports
+    └── polished/         # Customizable location for final polished outputs
 ```
 
-## Configuration
+## Included Files
 
-The project uses a YAML-based configuration system for easy parameter management:
+1. **Video Files**:
+   - `TCRMP20241014_3D_BWR_T1.mov`
+   - `TCRMP20241014_3D_BWR_T2.mov`
 
-1. Edit `analysis_params.yaml` to set your parameters:
+2. **Configuration**:
+   - `analysis_params.yaml` - Complete configuration file with all processing parameters
+
+## Configuration Details
+
+The `analysis_params.yaml` file is pre-configured with:
+
+1. **Project Information**:
    ```yaml
-   # Project Information
    project:
      name: "TCRMP_3D_Example"
-     notes: |
-       This is an example project demonstrating the TCRMP 3D processing workflow.
-       The project includes two sample video files for processing:
-       - TCRMP20241014_3D_BWR_T1.mov
-       - TCRMP20241014_3D_BWR_T2.mov
-
-   # Directory Configuration
-   directories:
-     video_source: "../video_source"  # Directory containing MP4/MOV files
-     base: ""  # Leave empty to use current directory
-     data: ""  # Leave empty to use base/data
-     output: ""  # Leave empty to use base/output
-     adobe_presets: "../../presets/lightroom"
-     metashape_presets: "../../presets/premiere"
-     scripts: "../../src"  # Location of processing scripts
-     config: "src/config.py"  # Location of config file
-
-   # Processing Parameters
-   processing:
-     frames_per_transect: 1200
-     extraction_rate: 0.5  # 1.0 = all frames, 0.5 = every other frame
-     chunk_size: 400
-     use_adobe_presets: true
-     use_gpu: true
-     decimated_vertices: 3000000
-     sketchfab_token: "your_sketchfab_api_token_here"
-
-   # Metashape Settings
-   metashape:
-     quality: 2  # 1=highest, 8=lowest quality but faster
-     defaults:
-       accuracy: "high"
-       quality: "high"
-       depth_filtering: "moderate"
-       max_neighbors: 100
+     notes: "Example project demonstrating the TCRMP 3D processing workflow."
    ```
 
-2. The `config.py` file automatically loads parameters from `analysis_params.yaml` when imported by the processing scripts.
+2. **Directory Configuration**:
+   ```yaml
+   directories:
+     video_source: "video_source"
+     base: "."
+     data: "data"
+     output: "output"
+     adobe_presets: "../../presets/lightroom"
+     metashape_presets: "../../presets/premiere"
+     scripts: "../../src"
+     config: "../../src/config.py"
+     polished_outputs: "output/polished"  # Customizable location for final polished outputs
+   ```
 
-3. The status file will be automatically generated and updated as processing proceeds.
+3. **Processing Parameters**:
+   ```yaml
+   processing:
+     frames_per_transect: 1200
+     extraction_rate: 0.5
+     chunk_size: 400
+     use_gpu: true
+     metashape:
+       quality: 2
+       defaults:
+         accuracy: "high"
+         quality: "high"
+         depth_filtering: "moderate"
+         max_neighbors: 100
+       alignment:
+         downscale: 2
+         generic_preselection: true
+         reference_preselection: false
+       optimization:
+         fit_f: true
+         fit_cx: true
+         fit_cy: true
+         fit_b1: true
+         fit_b2: true
+         fit_k1: true
+         fit_k2: true
+         fit_k3: true
+         fit_k4: true
+         fit_p1: true
+         fit_p2: true
+         fit_p3: true
+         fit_p4: true
+         adaptive_fitting: false
+       mesh:
+         surface_type: "Arbitrary"
+         interpolation: "EnabledInterpolation"
+         face_count: "HighFaceCount"
+         source_data: "DenseCloudData"
+     chunk_quality:
+       min_cameras: 10
+       min_alignment_percentage: 90
+     model_cleanup:
+       min_faces: 100
+       min_vertices: 50
+     orthomosaic:
+       resolution: 0.001
+       save_alpha: true
+       save_world: true
+       save_xyz: true
+     model_export:
+       texture_format: "JPEG"
+       save_texture: true
+       save_uv: true
+       save_normals: true
+       save_colors: true
+     final_orthomosaic:
+       resolution: 0.0005
+       save_alpha: true
+       save_world: true
+       save_xyz: true
+     final_model:
+       texture_format: "JPEG"
+       texture_size: 4096
+       save_texture: true
+       save_uv: true
+       save_normals: true
+       save_colors: true
+     point_cloud:
+       format: "LAS"
+       save_colors: true
+       save_normals: true
+     sketchfab:
+       token: "your_sketchfab_api_token_here"
+       decimated_vertices: 3000000
+   ```
+
+## Initial Setup
+
+1. **Create Metashape Projects**:
+   - Open Metashape
+   - Create your project(s) however you want to divide up the dataset
+   - Save your PSX files in the `data/psx_input/` directory
+   - This is the only location where PSX files should be placed
+
+2. **Setup Python Environment**:
+   ```bash
+   # Create and activate virtual environment
+   python3 -m venv .venv
+   source .venv/bin/activate
+
+   # Install dependencies
+   pip install -r requirements.txt
+   ```
+
+## Processing Steps
+
+1. **Extract Frames**:
+   ```bash
+   python src/step0.py
+   ```
+
+2. **Initial 3D Processing**:
+   ```bash
+   python src/step1.py
+   ```
+
+3. **Chunk Management**:
+   ```bash
+   python src/step2.py
+   ```
+
+4. **Exports and Scale Bars**:
+   ```bash
+   python src/step3.py
+   ```
+
+5. **Final Exports**:
+   ```bash
+   python src/step4.py
+   ```
 
 ## Status Tracking
 
-The system automatically generates and maintains a status file for each processing run. The status file:
+The workflow uses a status tracking system to monitor progress:
 
-- Is named uniquely using the project name and timestamp
-- Contains project metadata and configuration
-- Tracks the progress of each transect
-- Is updated automatically as processing proceeds
-- Is stored in the data directory
+1. **Status Files**:
+   - Created in `output/reports/`
+   - Named `{project_name}_status.yaml`
+   - Tracks progress of each processing step
 
-Example status file format:
-```
-TCRMP 3D Processing Status Report
-================================
+2. **Status Updates**:
+   - Each step updates the status file
+   - Includes timestamps and error messages
+   - Helps resume interrupted processing
 
-Project: TCRMP_3D_Example
-Started: 20240321_143022
-Video Source: ../video_source
-Data Directory: /path/to/project/data
-Output Directory: /path/to/project/output
-Processing Quality: 2
+## Notes
 
-Project Notes:
-This is an example project demonstrating the TCRMP 3D processing workflow.
-...
-
-Processing Parameters:
---------------------
-Frames per transect: 1200
-Extraction rate: 0.5
-Chunk size: 400
-GPU acceleration: True
-Adobe presets: True
-
-Transect Processing Status:
--------------------------
-
-Transect: TCRMP20241014_3D_BWR_T1
-Status: Ready for processing
-Frames extracted: 0
-Step 1 complete: False
-Step 2 complete: False
-Step 3 complete: False
-Step 4 complete: False
-Notes: Initial setup complete
-```
-
-## Using This Example
-
-To use this example as a template for your own project:
-
-1. Copy the entire directory structure
-2. Edit `analysis_params.yaml` to set your own parameters
-3. Follow the instructions in the main repository README to run the processing scripts
-
-Note: This is only an example structure - no actual videos or outputs are included. 
+- The example uses two transects from the same site (BWR)
+- All processing parameters are optimized for coral reef monitoring
+- The configuration can be modified for different project needs
+- PSX files must be placed in the `data/psx_input/` directory
+- The location of final polished outputs can be customized in `analysis_params.yaml` 

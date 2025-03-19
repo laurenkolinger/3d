@@ -7,9 +7,17 @@ This repository provides a standardized framework for 3D reconstruction of coral
 1. Create a new project directory and copy the example project structure:
    ```bash
    cp -r examples/sample_project my_new_project
+   cd my_new_project
    ```
 
-2. Edit `analysis_params.yaml` in your project directory to set your parameters:
+2. Set up the Python virtual environment in your project directory:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
+   pip install -r ../requirements.txt
+   ```
+
+3. Edit `analysis_params.yaml` in your project directory to set your parameters:
    ```yaml
    # Project Information
    project:
@@ -19,42 +27,140 @@ This repository provides a standardized framework for 3D reconstruction of coral
 
    # Directory Configuration
    directories:
-     video_source: "/path/to/your/videos"  # Directory containing MP4/MOV files
-     base: ""  # Leave empty to use current directory
-     data: ""  # Leave empty to use base/data
-     output: ""  # Leave empty to use base/output
+     video_source: "video_source"  # Directory containing MP4/MOV files
+     base: "."  # Current directory (where .venv is located)
+     data: "data"  # Will be created in your project directory
+     output: "output"  # Will be created in your project directory
      adobe_presets: "../../presets/lightroom"
      metashape_presets: "../../presets/premiere"
      scripts: "../../src"  # Location of processing scripts
-     config: "src/config.py"  # Location of config file
+     config: "../../src/config.py"  # Location of config file
 
    # Processing Parameters
    processing:
+     # Frame Extraction (step0.py)
      frames_per_transect: 1200
      extraction_rate: 0.5  # 1.0 = all frames, 0.5 = every other frame
+     
+     # Initial 3D Processing (step1.py)
      chunk_size: 400
-     use_adobe_presets: true
      use_gpu: true
-     decimated_vertices: 3000000
-     sketchfab_token: "your_sketchfab_api_token_here"
-
-   # Metashape Settings
-   metashape:
-     quality: 2  # 1=highest, 8=lowest quality but faster
-     defaults:
-       accuracy: "high"
-       quality: "high"
-       depth_filtering: "moderate"
-       max_neighbors: 100
+     metashape:
+       quality: 2  # 1=highest, 8=lowest quality but faster
+       defaults:
+         accuracy: "high"
+         quality: "high"
+         depth_filtering: "moderate"
+         max_neighbors: 100
+         alignment:
+           downscale: 2
+           generic_preselection: true
+           reference_preselection: false
+         optimization:
+           fit_f: true
+           fit_cx: true
+           fit_cy: true
+           fit_b1: true
+           fit_b2: true
+           fit_k1: true
+           fit_k2: true
+           fit_k3: true
+           fit_k4: true
+           fit_p1: true
+           fit_p2: true
+           fit_p3: true
+           fit_p4: true
+           adaptive_fitting: false
+         mesh:
+           surface_type: "Arbitrary"
+           interpolation: "EnabledInterpolation"
+           face_count: "HighFaceCount"
+           source_data: "DenseCloudData"
+     
+     # Chunk Management (step2.py)
+     chunk_quality:
+       min_cameras: 10
+       min_alignment_percentage: 90
+     
+     # Exports and Scale Bars (step3.py)
+     model_cleanup:
+       min_faces: 100
+       min_vertices: 50
+     orthomosaic:
+       resolution: 0.001  # 1mm resolution
+       save_alpha: true
+       save_world: true
+       save_xyz: true
+     model_export:
+       texture_format: "JPEG"
+       save_texture: true
+       save_uv: true
+       save_normals: true
+       save_colors: true
+     
+     # Final Exports (step4.py)
+     final_orthomosaic:
+       resolution: 0.0005  # 0.5mm resolution
+       save_alpha: true
+       save_world: true
+       save_xyz: true
+     final_model:
+       texture_format: "JPEG"
+       texture_size: 4096
+       save_texture: true
+       save_uv: true
+       save_normals: true
+       save_colors: true
+     point_cloud:
+       format: "LAS"
+       save_colors: true
+       save_normals: true
+     
+     # Web Publishing
+     sketchfab:
+       token: "your_sketchfab_api_token_here"
+       decimated_vertices: 3000000
+     psx_filename: "TCRMP_3D_{site}_{date}"  # Template for final PSX files in output/psx/
    ```
 
-3. Run the frame extraction script:
+4. Process your videos:
    ```bash
-   cd my_new_project
-   python src/step0.py
+   # Extract frames from videos
+   PYTHONPATH=../../src python3 ../../src/step0.py
+
+   # Initial 3D processing with Metashape
+   PYTHONPATH=../../src python3 ../../src/step1.py
+
+   # Group chunks by site
+   PYTHONPATH=../../src python3 ../../src/step2.py
+
+   # Export models and add scale bars
+   PYTHONPATH=../../src python3 ../../src/step3.py
+
+   # Upload to Sketchfab
+   PYTHONPATH=../../src python3 ../../src/step4.py
    ```
 
-4. Follow the remaining steps in this SOP to complete the 3D reconstruction
+## Project Structure
+
+Each project directory should have this structure:
+```
+my_new_project/
+├── .venv/                  # Python virtual environment
+├── video_source/          # Place your MP4/MOV files here
+├── data/                  # Created automatically
+│   ├── frames/           # Extracted video frames
+│   ├── processed_frames/ # Edited frames (if needed)
+│   ├── psx_input/        # Input Metashape projects
+│   └── *_processing_status.txt  # Auto-generated status files
+├── output/               # Created automatically
+│   ├── models/          # 3D models
+│   ├── orthomosaics/    # Orthomosaic images
+│   ├── psx/             # Final Metashape projects
+│   ├── reports/         # Processing reports
+│   └── reports_initial/ # Initial processing reports
+└── analysis_params.yaml  # Project configuration file
+```
 
 ## Repository Structure
 
@@ -248,75 +354,37 @@ Each pass should be approximately 10 meters long and take about 1 minute, mainta
 
 ## Processing Workflow
 
-### Getting Started
+1. **Video Processing**
+   - Edit videos in Premiere Pro using provided presets
+   - Export as MOV/MP4 files
+   - Place processed videos in project's `video_source` directory
 
-Download and unzip this repository. The system is designed to be flexible - you can store videos, frames, and outputs in any location on your system.
+2. **Frame Extraction**
+   - Run `step0.py` to extract frames from videos
+   - Frames are saved in `data/frames/`
+   - Status file is created in `data/`
 
-### Configuration Setup
+3. **Initial 3D Processing**
+   - Run `step1.py` to create Metashape projects
+   - Align frames and build dense clouds
+   - Projects are saved in `data/psx_input/` with transect-based names
 
-1. Edit `analysis_params.yaml` in your project directory to set your parameters:
-   ```yaml
-   # Project Information
-   project:
-     name: "My_Project_Name"
-     notes: |
-       Description of your project and any important notes.
+4. **Chunk Management**
+   - Run `step2.py` to group chunks by site
+   - Create new Metashape projects for each site
+   - Projects are saved in `output/psx/` using the template from analysis_params.yaml
 
-   # Directory Configuration
-   directories:
-     video_source: "/path/to/your/videos"  # Directory containing MP4/MOV files
-     base: ""  # Leave empty to use current directory
-     data: ""  # Leave empty to use base/data
-     output: ""  # Leave empty to use base/output
-     adobe_presets: "../../presets/lightroom"
-     metashape_presets: "../../presets/premiere"
-     scripts: "../../src"  # Location of processing scripts
-     config: "src/config.py"  # Location of config file
+5. **Export and Scale Bars**
+   - Run `step3.py` to export models and orthomosaics
+   - Add scale bars to models
+   - Outputs are saved in `output/models/` and `output/orthomosaics/`
 
-   # Processing Parameters
-   processing:
-     frames_per_transect: 1200
-     extraction_rate: 0.5  # 1.0 = all frames, 0.5 = every other frame
-     chunk_size: 400
-     use_adobe_presets: true
-     use_gpu: true
-     decimated_vertices: 3000000
-     sketchfab_token: "your_sketchfab_api_token_here"
+6. **Web Publishing**
+   - Run `step4.py` to upload models to Sketchfab
+   - Generate processing reports
+   - Reports are saved in `output/reports/`
 
-   # Metashape Settings
-   metashape:
-     quality: 2  # 1=highest, 8=lowest quality but faster
-     defaults:
-       accuracy: "high"
-       quality: "high"
-       depth_filtering: "moderate"
-       max_neighbors: 100
-   ```
-
-2. The configuration system will:
-   - Automatically create all required directories
-   - Generate a unique status file for tracking progress
-   - Apply settings to all processing steps
-   - Handle paths and file organization
-
-3. Key features:
-   - **User-friendly configuration**: Edit YAML file instead of Python code
-   - **Flexible paths**: Point to videos and outputs stored anywhere
-   - **Automatic directory creation**: All required directories are created automatically
-   - **Customizable parameters**: Adjust frame extraction, model quality, and other settings
-   - **Status tracking**: Automatic generation and updating of processing status files
-
-### Data Tracking
-
-The repository automatically maintains a CSV file (`data/tracking.csv`) that tracks:
-
-- Transect identifiers
-- Source video locations
-- Extracted frame locations
-- Processing status for each step
-- Output file locations
-
-This CSV is automatically updated by each script as processing progresses.
+Each step updates the status file in `data/` to track progress and any issues encountered.
 
 ## Video Encoding (Premier Pro)
 

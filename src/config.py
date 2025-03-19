@@ -111,7 +111,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Handle directories based on user configuration
 if not BASE_DIRECTORY:
-    BASE_DIRECTORY = ROOT_DIR
+    BASE_DIRECTORY = os.getcwd()  # Use current working directory instead of ROOT_DIR
 
 if not DATA_DIRECTORY:
     DATA_DIRECTORY = os.path.join(BASE_DIRECTORY, "data")
