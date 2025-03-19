@@ -7,6 +7,10 @@ for processing coral reef 3D models.
 
 import os
 import datetime
+import sys
+
+# Add the main src directory to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 
 # =============================================================================
 # USER CONFIGURATION AREA
@@ -16,7 +20,7 @@ import datetime
 VIDEO_SOURCE_DIRECTORY = "../video_source"  # Relative path to video files
 
 # Base directory for all inputs and outputs
-BASE_DIRECTORY = "/path/to/project"  # Replace with actual path or leave empty to use current directory
+BASE_DIRECTORY = ""  # Leave empty to use current directory
 
 # Input data directory (where frames, processed frames, etc. will be stored)
 DATA_DIRECTORY = ""  # Leave empty to use BASE_DIRECTORY/data

@@ -1,98 +1,83 @@
 import Metashape
-import os, sys, time, math
+import os
+import pandas as pd
+import config
 
-# REDUNDANT WITH STEP 1 - REmove? 
-# this script: 
-# 1. builds depth maps
-# 2. builds dense cloud
-# 3. builds model
-# 4. smooths model
-# 5. builds UV
-# 6. builds texture
-
-# the amount by which you want to divide the mesh face count by 
-# div_factor = 8 
+# This script automates the process of copying chunks between Metashape projects based on a CSV file. It reads the CSV, appends chunks from source projects to destination projects, and saves the results. Key steps include:
+# 
+# -   read the CSV file location:
+# 
+# -   Project handling: For each unique project name in the CSV, the script opens or creates a destination .psx project and appends chunks from specified source projects.
+# 
+# -   Chunk copying: It searches for the specified chunk in the source project and appends it to the destination project.
+# 
+# -   Saving results: After processing, the destination project is saved, ensuring all chunks are properly appended.
 
 # Open the existing project
 doc = Metashape.app.document
 
-# Get the directory one level above the project directory and create the "reports" folder
-project_dir = os.path.dirname(doc.path)
-report_dir = os.path.join(project_dir, "..", "04_reports_initial")
+# Get input and output directories from configuration
+psx_startdir = config.INPUT_DIRS["psx_input"]
+psx_finaldir = config.OUTPUT_DIRS["psx_output"]
 
-# Ensure the report directory exists
-os.makedirs(report_dir, exist_ok=True)
+# Get metadata CSV file path
+csv_file_path = config.METADATA_CSV
 
-# print(f"{report_dir}")
+# Read the CSV file
+df = pd.read_csv(csv_file_path)
 
-for chunk in doc.chunks:
-    # Build dense cloud
-    chunk.buildDepthMaps(
-        downscale=1,
-        filter_mode=Metashape.NoFiltering
-    )
-    #chunk.buildDenseCloud()
-    
-    # Build model
-    chunk.buildModel(
-        source_data=Metashape.DepthMapsData,
-        surface_type=Metashape.Arbitrary,
-        face_count=Metashape.MediumFaceCount,
-        volumetric_masks=False,
-        interpolation=Metashape.EnabledInterpolation,
-        vertex_colors=True
-    )
-    
-    # Smooth model
-    #chunk.smoothModel(
-    #    strength=3,
-    #    apply_to_selection=False,
-    #    fix_borders=True,
-    #    preserve_edges=False
-    #)
-    
-    # face_ct = len(chunk.model.faces) 
-    # target_face_count = int(original_face_count / div_factor)
-    # 
-    # # Decimate model
-    # chunk.decimateModel(
-    #     face_count=target_face_count,
-    #     apply_to_selection=False
-    # )
-    
-    
-    # Build UV
-    chunk.buildUV(
-        mapping_mode=Metashape.GenericMapping,
-        texture_size=16384,
-        page_count=4
-    )
+# Split the filename by underscore
+df[['site', 'transect']] = df['filename'].str.split('_', expand=True)[[2, 3]]
 
-    # Build texture
-    chunk.buildTexture(
-        texture_size=16384,
-        texture_type=Metashape.Model.DiffuseMap,
-        blending_mode=Metashape.MosaicBlending,
-        fill_holes=True,
-        ghosting_filter=True,
-        enable_gpu=False,
-        relaxed_precision=True
-    )
+# For the prefix, we need to combine the first three elements
+df['prefix'] = df['filename'].str.split('_').str[:3].str.join('_')
 
-    ## Remove lighting
-    #chunk.removeLighting(
-    #    color_mode=Metashape.SingleColor,
-    #    ao_map_path="",
-    #    internal_blur_radius=1.5,
-    #    mesh_noise_suppression=True,
-    #    ao_multiplier=1.5
-    #)
-    
-    # Generate report
-    report_file_path = os.path.join(report_dir,f"{chunk.label}.pdf")
-    chunk.exportReport(report_file_path, title = f"{chunk.label}.pdf")
-    
-    # Save the project
-    doc.save()
+# write chunk name 
+# df['chunk_name'] = df['site']+'_'+df['transect']
+df['chunk_name'] = df['filename']
 
-print("Processing completed successfully.")
+df['psx_startdir'] = os.path.relpath(psx_startdir, os.path.dirname(csv_file_path))
+df['psx_finaldir'] = os.path.relpath(psx_finaldir, os.path.dirname(csv_file_path))
+df['psx_finalname'] = df['prefix']+'.psx'
+
+# Write the updated DataFrame back to the same CSV file
+df.to_csv(csv_file_path, index=False)
+
+# Iterate over each unique destination
+for destination in df['psx_finalname'].unique():
+    # Create or open the destination .psx project
+    dest_project_path = os.path.join(psx_finaldir, destination)
+    dest_doc = Metashape.Document()
+    
+    if os.path.exists(dest_project_path):
+        dest_doc.open(dest_project_path, read_only=False)
+    else:
+        dest_doc.save(dest_project_path)  # Create a new project file
+    
+    # Filter the rows that correspond to this destination
+    rows = df[df['psx_finalname'] == destination]
+    
+    # Iterate over each row and append the corresponding chunk from the origin .psx
+    for _, row in rows.iterrows():
+        print(row)
+        origin_project_path = os.path.join(psx_startdir, row['psx_startname'])
+        origin_doc = Metashape.Document()
+        origin_doc.open(origin_project_path, read_only=True)
+        finalchunklab = row['filename']
+        
+        # Find the chunk by name in the origin project
+        chunk = next((ch for ch in origin_doc.chunks if ch.label == row['chunk_name']), None)
+        
+        if chunk is not None:
+            print(f"Appending chunk: {chunk.label} from {origin_project_path} to {destination}")
+            # Append the chunk directly to the destination project
+            chunk.label = finalchunklab
+            dest_doc.append(origin_doc, [chunk])
+        else:
+            print(f"Chunk {row['chunk_name']} not found in {origin_project_path}")
+    
+    # Save the destination project after appending all chunks
+    dest_doc.save(dest_project_path)
+    print(f"Chunks appended to {destination} and saved.")
+
+print("All processing completed successfully.")

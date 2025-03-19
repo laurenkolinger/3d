@@ -1,0 +1,41 @@
+# TCRMP 3D Analysis Parameters
+# Edit this file to configure your analysis
+
+# Project Information
+project:
+  name: "TCRMP_3D_Example"
+  notes: |
+    This is an example project demonstrating the TCRMP 3D processing workflow.
+    The project includes two sample video files for processing:
+    - TCRMP20241014_3D_BWR_T1.mov
+    - TCRMP20241014_3D_BWR_T2.mov
+
+# Directory Configuration
+directories:
+  video_source: "../video_source"  # Directory containing MP4/MOV files
+  base: ""  # Leave empty to use current directory
+  data: ""  # Leave empty to use base/data
+  output: ""  # Leave empty to use base/output
+  adobe_presets: "../../presets/lightroom"
+  metashape_presets: "../../presets/premiere"
+  scripts: "../../src"  # Location of processing scripts
+  config: "src/config.py"  # Location of config file
+
+# Processing Parameters
+processing:
+  frames_per_transect: 1200
+  extraction_rate: 0.5  # 1.0 = all frames, 0.5 = every other frame
+  chunk_size: 400
+  use_adobe_presets: true
+  use_gpu: true
+  decimated_vertices: 3000000
+  sketchfab_token: "your_sketchfab_api_token_here"
+
+# Metashape Settings
+metashape:
+  quality: 2  # 1=highest, 8=lowest quality but faster
+  defaults:
+    accuracy: "high"
+    quality: "high"
+    depth_filtering: "moderate"
+    max_neighbors: 100 

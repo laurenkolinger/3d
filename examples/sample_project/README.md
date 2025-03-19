@@ -9,14 +9,14 @@ This example includes:
   - `video_source/TCRMP20241014_3D_BWR_T1.mov` 
   - `video_source/TCRMP20241014_3D_BWR_T2.mov`
 - A complete directory structure for organizing data
-- A sample configuration file pointing to the included videos
+- A sample YAML configuration file (`analysis_params.yaml`)
 
 ## Project Structure
 
 ```
 sample_project/
 ├── src/                     # Contains the configuration file
-│   └── config.py            # Example configuration with sample paths
+│   └── config.py            # Loads parameters from analysis_params.yaml
 │
 ├── data/                    # All input data
 │   ├── frames/              # Where extracted frames would be stored
@@ -32,39 +32,55 @@ sample_project/
     └── reports_initial/     # Initial reports
 ```
 
-## Example Configuration
+## Configuration
 
-The `src/config.py` file demonstrates how to set up the configuration for your project. It includes:
+The project uses a YAML-based configuration system for easy parameter management:
 
-- Video source directory
-- Base directory for all data and outputs
-- Custom data directory (optional)
-- Custom output directory (optional)
-- Processing parameters
-- Project metadata
+1. Edit `analysis_params.yaml` to set your parameters:
+   ```yaml
+   # Project Information
+   project:
+     name: "TCRMP_3D_Example"
+     notes: |
+       This is an example project demonstrating the TCRMP 3D processing workflow.
+       The project includes two sample video files for processing:
+       - TCRMP20241014_3D_BWR_T1.mov
+       - TCRMP20241014_3D_BWR_T2.mov
 
-Key settings in the configuration file:
+   # Directory Configuration
+   directories:
+     video_source: "../video_source"  # Directory containing MP4/MOV files
+     base: ""  # Leave empty to use current directory
+     data: ""  # Leave empty to use base/data
+     output: ""  # Leave empty to use base/output
+     adobe_presets: "../../presets/lightroom"
+     metashape_presets: "../../presets/premiere"
+     scripts: "../../src"  # Location of processing scripts
+     config: "src/config.py"  # Location of config file
 
-```python
-# Directory containing your MP4/MOV video files
-VIDEO_SOURCE_DIRECTORY = "../video_source"  # Relative path to video files
+   # Processing Parameters
+   processing:
+     frames_per_transect: 1200
+     extraction_rate: 0.5  # 1.0 = all frames, 0.5 = every other frame
+     chunk_size: 400
+     use_adobe_presets: true
+     use_gpu: true
+     decimated_vertices: 3000000
+     sketchfab_token: "your_sketchfab_api_token_here"
 
-# Base directory for all inputs and outputs
-BASE_DIRECTORY = "/path/to/project"  # Replace with actual path or leave empty
+   # Metashape Settings
+   metashape:
+     quality: 2  # 1=highest, 8=lowest quality but faster
+     defaults:
+       accuracy: "high"
+       quality: "high"
+       depth_filtering: "moderate"
+       max_neighbors: 100
+   ```
 
-# Optional: Custom data and output directories
-DATA_DIRECTORY = ""  # Leave empty to use BASE_DIRECTORY/data
-OUTPUT_DIRECTORY = ""  # Leave empty to use BASE_DIRECTORY/output
+2. The `config.py` file automatically loads parameters from `analysis_params.yaml` when imported by the processing scripts.
 
-# Project metadata
-PROJECT_NAME = "TCRMP_3D_Example"  # Used in status file name
-PROJECT_NOTES = """..."""  # Project description and parameters
-
-# Processing parameters
-FRAMES_PER_TRANSECT = 1200
-EXTRACTION_RATE = 0.5
-CHUNK_SIZE = 400
-```
+3. The status file will be automatically generated and updated as processing proceeds.
 
 ## Status Tracking
 
@@ -92,6 +108,14 @@ Project Notes:
 This is an example project demonstrating the TCRMP 3D processing workflow.
 ...
 
+Processing Parameters:
+--------------------
+Frames per transect: 1200
+Extraction rate: 0.5
+Chunk size: 400
+GPU acceleration: True
+Adobe presets: True
+
 Transect Processing Status:
 -------------------------
 
@@ -110,7 +134,7 @@ Notes: Initial setup complete
 To use this example as a template for your own project:
 
 1. Copy the entire directory structure
-2. Edit the `src/config.py` file to set your own paths and parameters
+2. Edit `analysis_params.yaml` to set your own parameters
 3. Follow the instructions in the main repository README to run the processing scripts
 
 Note: This is only an example structure - no actual videos or outputs are included. 

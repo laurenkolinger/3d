@@ -4,21 +4,57 @@ This repository provides a standardized framework for 3D reconstruction of coral
 
 ## Quick Start
 
-1. Open `src/config.py` and set these required parameters:
-   ```python
-   # Directory containing your MP4/MOV video files
-   VIDEO_SOURCE_DIRECTORY = "/path/to/your/videos"  
-
-   # Base directory for all outputs
-   OUTPUT_BASE_DIRECTORY = "/path/to/store/outputs"  
-   ```
-
-2. Run the frame extraction script:
+1. Create a new project directory and copy the example project structure:
    ```bash
-   python src/extract_frames.py
+   cp -r examples/sample_project my_new_project
    ```
 
-3. Follow the remaining steps in this SOP to complete the 3D reconstruction
+2. Edit `analysis_params.yaml` in your project directory to set your parameters:
+   ```yaml
+   # Project Information
+   project:
+     name: "My_Project_Name"
+     notes: |
+       Description of your project and any important notes.
+
+   # Directory Configuration
+   directories:
+     video_source: "/path/to/your/videos"  # Directory containing MP4/MOV files
+     base: ""  # Leave empty to use current directory
+     data: ""  # Leave empty to use base/data
+     output: ""  # Leave empty to use base/output
+     adobe_presets: "../../presets/lightroom"
+     metashape_presets: "../../presets/premiere"
+     scripts: "../../src"  # Location of processing scripts
+     config: "src/config.py"  # Location of config file
+
+   # Processing Parameters
+   processing:
+     frames_per_transect: 1200
+     extraction_rate: 0.5  # 1.0 = all frames, 0.5 = every other frame
+     chunk_size: 400
+     use_adobe_presets: true
+     use_gpu: true
+     decimated_vertices: 3000000
+     sketchfab_token: "your_sketchfab_api_token_here"
+
+   # Metashape Settings
+   metashape:
+     quality: 2  # 1=highest, 8=lowest quality but faster
+     defaults:
+       accuracy: "high"
+       quality: "high"
+       depth_filtering: "moderate"
+       max_neighbors: 100
+   ```
+
+3. Run the frame extraction script:
+   ```bash
+   cd my_new_project
+   python src/step0.py
+   ```
+
+4. Follow the remaining steps in this SOP to complete the 3D reconstruction
 
 ## Repository Structure
 
@@ -26,8 +62,8 @@ The repository follows standard software development practices:
 
 ```
 ├── src/                     # Source code
-│   ├── config.py            # Configuration module
-│   ├── extract_frames.py    # Frame extraction script
+│   ├── config.py            # Configuration module (loads from YAML)
+│   ├── step0.py             # Frame extraction script
 │   ├── step1.py             # Initial 3D processing 
 │   ├── step2.py             # Chunk management
 │   ├── step3.py             # Exports and scale bars
@@ -37,7 +73,7 @@ The repository follows standard software development practices:
 │   ├── frames/              # Extracted video frames
 │   ├── processed_frames/    # Edited frames (if needed)
 │   ├── psx_input/           # Input Metashape projects
-│   └── tracking.csv         # Processing progress tracker
+│   └── *_processing_status.txt  # Auto-generated status files
 │
 ├── output/                  # Processing outputs
 │   ├── models/              # 3D models
@@ -60,8 +96,7 @@ The repository follows standard software development practices:
 
 The repository includes an example project structure in the `examples/sample_project/` directory that demonstrates:
 
-- Sample configuration file (`src/config.py`)
-- Example tracking CSV with sample data
+- Sample YAML configuration file (`analysis_params.yaml`)
 - Complete directory structure matching the recommended layout
 - README explaining how to use the example as a template
 
@@ -69,152 +104,147 @@ You can examine this example to see how to organize your own data and workflows.
 
 ## Configuration
 
-- **User-friendly configuration**: Edit the clearly marked configuration area at the top of `src/config.py`
-- **Flexible Paths**: Point to videos stored anywhere on your system
+The project uses a YAML-based configuration system for easy parameter management:
+
+- **User-friendly configuration**: Edit `analysis_params.yaml` in your project directory
+- **Flexible Paths**: Point to videos and outputs stored anywhere on your system
 - **Automatic Directory Creation**: All required directories are created automatically
-- **Customizable Parameters**: Adjust frame extraction and model quality settings
-
-## field methods
-
-### materials
-
--   camera + lights, memory card
-
--   scale bars
-
--   ...
-
-### procedure (4-pass method)
-
--   general
-
-    -   everything with the pink ziptie belongs to the 3d camera
-
--   camera maintenance:
-
-    -   camera cinema gear
-
-    -   settings
-
-    -   programmable buttons
-
--   housing maintenance (every few weeks, or if any leaks detected)
-
-    -   o-rings greasing
-
--   day before
-
-    -   check housing/o-rings
-
-    -   charge camera
-
-    -   charge external battery pack
-
-    -   charge strobe light batteries
-
-    -   memory card- initialize media
-
--   morning of:
-
-    -   **closing / sealing cam**
-
-        -   install battery and memory card into camera
-
-        -   attach lens
-
-        -   check autofocus on (switch on lens)
-
-        -   remove camera lens cap
-
-        -   check for smudges on lens
-
-        -   pull switch on housing so that can insert camera with the cinema camera gear
-
-        -   seat camera in housing (pull out stage thing, screw camera on.
-
-        -   put camera into housing (careful to not scratch lens)
-
-        -   connect to external battery
-
-        -   add external battery to camera
-
-        -   once in housing:
-
-            -   turn alarm on
-
-            -   check for smudges on housing lens
-
-            -   check o-ring
-
-            -   close housing
-
-            -   use vacuum device until light turns green.
-
-    -   **check have materials**:
-
-        -   camera + mem card
-
-        -   housing
-
-        -   field box with extra stuff/towels, o-ring grease, cleaning materials, dry towels, etc.
-
-        -   slate
-
-        -   scale bars x 2
-
-        -   handle (clips, rope)
-
-    -   **check camera settings**:
-
-        -   CP file : C2: Canon log 3 / C.Gamut Color matrix neutral.
-
-        -   Sensor mode: full frame
-
-        -   freq 59.94hz
-
-        -   Rec = RAW LT
-
-        -   Dest = CFexpress
-
-        -   Frame = 59.94 fps
-
-### in water :
-
--   **Start of dive:**
-
-    -   **B**uttons: press all buttons to prime them
-
-    -   **Power:** turn on camera and lights (hold in/out buttons 1s, press middle button). put lights to sleep (hold center 2s)
-
-    -   **L**eaks: green light stays green, if turn red, return to boat.
-
--   **Transect and Camera Setup**
-
-    -   **S**cale bars: Place at each end of transect, one perpendicular, one parallel to transect. make sure targets visible in some footage and scale bars do not move at any time during filming.
-
-    -   **T**ime code: reset (Mode button).
-
-    -   **A**rms: extend to position lights as far apart as possible
-
-    -   **L**ights: turn on (hold Center Button 2 sec).
-
-    -   **W**hite balance: press Button 13, hold camera over white part of one of the scale bars.
-
-    -   **E**xposure: open WFM (Button 6) and false color (Button 9), Use F-stop dial to slightly overexpose, just below 100% on WFM.
-
-    -   **A**ltitude: position camera so viewfinder covers length of scale bar, note height (should be \~70cm). Maintain this altitude throughout filming.
-
-    -   **R**ecord: Record button, show transect number, autofocus
-
--   **Filming (4 passes, 10 m each, \~1 min, consistent altitude):**
-
-    -   Pass 1: Start at one end, camera facing straight down, transect line visible in left quarter of viewfinder.
-
-    -   Pass 2: Turn around, camera facing straight down, slightly away from transect line such that viewfinder sees 1m distance from transect while keeping \~0.5 m overlap with Pass 1 (\~arm's length from transect)
-
-    -   Pass 3 & 4: Move \~20 cm from pass 1/2 position, tilt camera 45°, capture angled view of transect from either side.
-
--   **After Filming:** press center button on each light for 2s to put light to sleep.
+- **Customizable Parameters**: Adjust frame extraction, model quality, and other settings
+- **Status Tracking**: Automatic generation and updating of processing status files
+
+## Field Methods
+
+### Required Materials
+
+- Camera system:
+  - Camera with lights
+  - Memory card (CF Express)
+  - Camera housing
+  - External battery pack
+  - Strobe light batteries
+  - Camera lens
+  - Cinema camera gear
+  - Handle with clips and rope
+
+- Field equipment:
+  - Scale bars (2)
+  - Field box containing:
+    - Extra towels
+    - O-ring grease
+    - Cleaning materials
+    - Dry towels
+  - Slate
+  - Vacuum device for housing seal check
+
+### Camera Setup and Maintenance
+
+#### Regular Maintenance
+- Camera cinema gear maintenance
+- Camera settings verification
+- Programmable button configuration
+- Housing maintenance (every few weeks or if leaks detected):
+  - O-ring greasing
+
+#### Pre-Dive Preparation
+1. Day before:
+   - Check housing and o-rings
+   - Charge camera
+   - Charge external battery pack
+   - Charge strobe light batteries
+   - Initialize media on memory card
+
+2. Morning of:
+   - Camera sealing procedure:
+     1. Install battery and memory card
+     2. Attach lens and verify autofocus is on
+     3. Remove lens cap and check for smudges
+     4. Prepare housing for camera insertion
+     5. Seat camera in housing using cinema camera gear
+     6. Connect external battery
+     7. Final housing checks:
+        - Turn on alarm
+        - Check for smudges on housing lens
+        - Verify o-ring condition
+        - Close housing
+        - Use vacuum device until light turns green
+
+   - Equipment verification:
+     - Camera and memory card
+     - Housing
+     - Field box with supplies
+     - Slate
+     - Scale bars (2)
+     - Handle with clips and rope
+
+   - Camera settings verification:
+     - CP file: C2 (Canon log 3 / C.Gamut Color matrix neutral)
+     - Sensor mode: full frame
+     - Frequency: 59.94hz
+     - Recording: RAW LT
+     - Destination: CFexpress
+     - Frame rate: 59.94 fps
+
+### In-Water Procedures
+
+#### Start of Dive
+1. **B**uttons: Press all buttons to prime them
+2. **P**ower: 
+   - Turn on camera and lights (hold in/out buttons 1s, press middle button)
+   - Put lights to sleep (hold center 2s)
+3. **L**eaks: Monitor green light - if turns red, return to boat
+
+#### Transect and Camera Setup
+1. **S**cale bars: 
+   - Place at each end of transect
+   - One perpendicular, one parallel to transect
+   - Ensure targets visible in footage
+   - Verify scale bars remain stationary during filming
+
+2. **T**ime code: Reset (Mode button)
+
+3. **A**rms: Extend to position lights as far apart as possible
+
+4. **L**ights: Turn on (hold Center Button 2 sec)
+
+5. **W**hite balance: Press Button 13, hold camera over white part of scale bar
+
+6. **E**xposure: 
+   - Open WFM (Button 6) and false color (Button 9)
+   - Use F-stop dial to slightly overexpose (just below 100% on WFM)
+
+7. **A**ltitude: 
+   - Position camera so viewfinder covers length of scale bar
+   - Note height (should be ~70cm)
+   - Maintain this altitude throughout filming
+
+8. **R**ecord: 
+   - Press Record button
+   - Show transect number
+   - Verify autofocus
+
+#### Filming Protocol (4-Pass Method)
+Each pass should be approximately 10 meters long and take about 1 minute, maintaining consistent altitude.
+
+1. **Pass 1**: 
+   - Start at one end
+   - Camera facing straight down
+   - Transect line visible in left quarter of viewfinder
+
+2. **Pass 2**: 
+   - Turn around
+   - Camera facing straight down
+   - Position slightly away from transect line
+   - Viewfinder should see 1m distance from transect
+   - Maintain ~0.5m overlap with Pass 1
+   - Position approximately arm's length from transect
+
+3. **Pass 3 & 4**: 
+   - Move ~20cm from pass 1/2 position
+   - Tilt camera 45°
+   - Capture angled view of transect from either side
+
+#### Post-Filming
+- Press center button on each light for 2s to put lights to sleep
 
 ## Processing Workflow
 
@@ -224,35 +254,57 @@ Download and unzip this repository. The system is designed to be flexible - you 
 
 ### Configuration Setup
 
-1. Open `src/config.py` in any text editor
-2. In the USER CONFIGURATION AREA at the top of the file:
-   - Set `VIDEO_SOURCE_DIRECTORY` to the folder containing your videos
-   - Set `BASE_DIRECTORY` to the root location for all inputs and outputs
-   - Optionally set `DATA_DIRECTORY` and `OUTPUT_DIRECTORY` for custom locations
-   - Adjust other parameters as needed (frames per transect, quality, etc.)
-3. Save the file - no other modifications are needed
+1. Edit `analysis_params.yaml` in your project directory to set your parameters:
+   ```yaml
+   # Project Information
+   project:
+     name: "My_Project_Name"
+     notes: |
+       Description of your project and any important notes.
 
-Example configuration:
-```python
-# Directory containing your MP4/MOV video files
-VIDEO_SOURCE_DIRECTORY = "/Users/researcher/Dropbox/CoralReefVideos/June2023"
+   # Directory Configuration
+   directories:
+     video_source: "/path/to/your/videos"  # Directory containing MP4/MOV files
+     base: ""  # Leave empty to use current directory
+     data: ""  # Leave empty to use base/data
+     output: ""  # Leave empty to use base/output
+     adobe_presets: "../../presets/lightroom"
+     metashape_presets: "../../presets/premiere"
+     scripts: "../../src"  # Location of processing scripts
+     config: "src/config.py"  # Location of config file
 
-# Base directory for all inputs and outputs
-BASE_DIRECTORY = "/Users/researcher/Documents/CoralReefModels"
+   # Processing Parameters
+   processing:
+     frames_per_transect: 1200
+     extraction_rate: 0.5  # 1.0 = all frames, 0.5 = every other frame
+     chunk_size: 400
+     use_adobe_presets: true
+     use_gpu: true
+     decimated_vertices: 3000000
+     sketchfab_token: "your_sketchfab_api_token_here"
 
-# Optional custom directories (if you need separate locations)
-DATA_DIRECTORY = "/Volumes/ExternalDrive/CoralReefData"  # Custom data location
-OUTPUT_DIRECTORY = ""  # Leave empty to use BASE_DIRECTORY/output
+   # Metashape Settings
+   metashape:
+     quality: 2  # 1=highest, 8=lowest quality but faster
+     defaults:
+       accuracy: "high"
+       quality: "high"
+       depth_filtering: "moderate"
+       max_neighbors: 100
+   ```
 
-# Number of frames to extract per transect
-FRAMES_PER_TRANSECT = 1500  # Increased for higher quality
-```
+2. The configuration system will:
+   - Automatically create all required directories
+   - Generate a unique status file for tracking progress
+   - Apply settings to all processing steps
+   - Handle paths and file organization
 
-With this flexible configuration:
-- You can process videos from any location
-- Data and outputs can be stored wherever you want
-- You can separate data and output directories (useful for limited space)
-- All required directories are created automatically
+3. Key features:
+   - **User-friendly configuration**: Edit YAML file instead of Python code
+   - **Flexible paths**: Point to videos and outputs stored anywhere
+   - **Automatic directory creation**: All required directories are created automatically
+   - **Customizable parameters**: Adjust frame extraction, model quality, and other settings
+   - **Status tracking**: Automatic generation and updating of processing status files
 
 ### Data Tracking
 
@@ -294,7 +346,7 @@ This CSV is automatically updated by each script as processing progresses.
 
 ## Extract Frames (Python)
 
-The frame extraction process uses a Python script (`src/extract_frames.py`) that leverages ffmpeg.
+The frame extraction process uses a Python script (`src/step0.py`) that leverages ffmpeg.
 
 ### Requirements
 
@@ -303,14 +355,14 @@ The frame extraction process uses a Python script (`src/extract_frames.py`) that
 
 ### Running the Script
 
-After configuring `src/config.py` with your video source directory:
+After configuring `analysis_params.yaml` with your video source directory:
 
 ```bash
-# Navigate to the repository directory
-cd path/to/3d-repository
+# Navigate to your project directory
+cd my_new_project
 
 # Run the extraction script
-python src/extract_frames.py
+python src/step0.py
 ```
 
 The script will:
@@ -319,7 +371,7 @@ The script will:
 3. Group videos by transect ID based on filename
 4. Extract frames from each video
 5. Save frames in the configured output directory
-6. Update the tracking CSV with progress information
+6. Update the status file with progress information
 
 ### Advanced Options
 
@@ -327,10 +379,10 @@ You can override the configuration file settings using command-line arguments:
 
 ```bash
 # Override source and output directories
-python src/extract_frames.py --video-dir /different/video/path --output-dir /custom/output/path
+python src/step0.py --video-dir /different/video/path --output-dir /custom/output/path
 
 # Custom frame count
-python src/extract_frames.py --frames 1800
+python src/step0.py --frames 1800
 ```
 
 ## Optional: Photo Editing
@@ -347,11 +399,9 @@ Future versions may incorporate algorithmic color correction methods like [Sea T
 
 ### File setup
 
--   Open new Metashape file
-
--   Add photos to it corresponding to each transect. You can use the frames directory created during the extraction step.
-
--   Save as PSX in your designated input PSX directory (as configured in `src/config.py`, default is `data/psx_input`).
+- Open new Metashape file
+- Add photos to it corresponding to each transect. You can use the frames directory created during the extraction step.
+- Save as PSX in your designated input PSX directory (as configured in `analysis_params.yaml`, default is `data/psx_input`).
 
 ### step1.py
 
@@ -364,12 +414,12 @@ This is the most time-consuming step and can take a few hours per chunk.
 This script performs the following operations:
 
 1. Aligns photos
-2. Removes points with high reconstruction uncertainty (configurable in config.py)
+2. Removes points with high reconstruction uncertainty (configurable in analysis_params.yaml)
 3. Optimizes cameras
-4. Removes points with high reprojection error (configurable in config.py)
-5. Removes points with high projection accuracy (configurable in config.py)
+4. Removes points with high reprojection error (configurable in analysis_params.yaml)
+5. Removes points with high projection accuracy (configurable in analysis_params.yaml)
 6. Rotates the coordinate system to the bounding box
-7. Builds dense cloud with quality setting (configurable in config.py)
+7. Builds dense cloud with quality setting (configurable in analysis_params.yaml)
 8. Builds model
 9. Builds UV maps
 10. Builds texture
@@ -382,11 +432,9 @@ The script uses the paths and parameters defined in the configuration file.
 
 Go through each chunk and check:
 
--   Each transect is roughly visible when you use 0 to reset view
-
--   There are no mirror images or huge gaps in photos (< 90% photos aligned should be a red flag)
-
--   Scale bars are visible
+- Each transect is roughly visible when you use 0 to reset view
+- There are no mirror images or huge gaps in photos (< 90% photos aligned should be a red flag)
+- Scale bars are visible
 
 Disable chunks that are not good quality (e.g., < 90% of photos aligned)
 
@@ -396,11 +444,11 @@ Run `src/step2.py`: in Metashape, select Tools, Run Script, and point to the `sr
 
 This script:
 
-1. Reads the tracking CSV file
+1. Reads the status file
 2. Groups chunks by site
-3. Creates new PSX projects in the output directory (configurable in config.py)
+3. Creates new PSX projects in the output directory (configurable in analysis_params.yaml)
 4. Copies the appropriate chunks from source projects to destination projects
-5. Updates the CSV file with progress information
+5. Updates the status file with progress information
 
 ### Straighten / scale models
 
@@ -408,25 +456,18 @@ Open each project and do the following for each chunk:
 
 **Straightening**
 
--   Load textured model
-
--   Auto change brightness and contrast in one of the images; this will be applied to the texture.
-
--   Change to rotate model view and rotate the transect so the transect line lines up horizontally and is top of view.
-
--   Model > Region > Rotate region to view
-
--   Resize region to "crop" to transect area (do this for top xy and side views)
-
--   Use rectangular crop tool to crop to transect area bound by region.
+- Load textured model
+- Auto change brightness and contrast in one of the images; this will be applied to the texture
+- Change to rotate model view and rotate the transect so the transect line lines up horizontally and is top of view
+- Model > Region > Rotate region to view
+- Resize region to "crop" to transect area (do this for top xy and side views)
+- Use rectangular crop tool to crop to transect area bound by region
 
 **Scaling (only if scaling manually)**
 
--   Place markers on scales - set up at least 2 scale bars
-
--   Set distance in reference pane
-
--   Press refresh button - make sure error less than .01
+- Place markers on scales - set up at least 2 scale bars
+- Set distance in reference pane
+- Press refresh button - make sure error less than .01
 
 **Save project**
 
@@ -443,7 +484,7 @@ This script:
 5. Exports report to the configured output directory
 6. Saves the project
 
-The script processes all projects listed in the CSV file, using the paths defined in the configuration file.
+The script processes all projects listed in the status file, using the paths defined in the configuration file.
 
 ### step4.py
 
@@ -452,8 +493,8 @@ Run `src/step4.py`: in Metashape, select Tools, Run Script, and point to the `sr
 This script:
 
 1. Duplicates each chunk and creates a temporary version
-2. Decimates the model to a specified number of vertices (configurable in config.py)
-3. Uploads the decimated model to Sketchfab using an API token (configurable in config.py)
+2. Decimates the model to a specified number of vertices (configurable in analysis_params.yaml)
+3. Uploads the decimated model to Sketchfab using an API token (configurable in analysis_params.yaml)
 4. Deletes the temporary chunk after upload
 5. Saves the project
 
