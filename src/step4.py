@@ -1,18 +1,17 @@
 import Metashape
 import os
 import pandas as pd
-
-# Set the desired number of vertices for decimation
-nverts = 3000000  # Set the desired number of vertices here
-sketchfab_api_token = "152b6186db06477482e2b42b327541da"  # Replace with your Sketchfab API token
+import config
 
 # Open the existing project
 doc = Metashape.app.document
 
-# Get the directory one level above the project directory and read in the csv. 
-project_dir = os.path.dirname(doc.path)
-template_dir = os.path.join(project_dir, "../..")
-csv_file_path = os.path.join(template_dir, "00_list.csv")
+# Get parameters from configuration
+nverts = config.PROCESSING_PARAMS["step4"]["vertices_count"]
+sketchfab_api_token = config.PROCESSING_PARAMS["step4"]["sketchfab_api_token"]
+
+# Get metadata CSV file path
+csv_file_path = config.METADATA_CSV
 
 # Read the CSV file
 df = pd.read_csv(csv_file_path)
@@ -20,11 +19,14 @@ df = pd.read_csv(csv_file_path)
 # Iterate over unique values of `psx_finalname` in the CSV
 for destination in df['psx_finalname'].unique():
         
-    # Get the directory and file paths from the CSV
+    # Get the project path from the CSV file
     matching_rows = df.loc[df['psx_finalname'] == destination]
     
     final_dir = df.loc[df['psx_finalname'] == destination, 'psx_finaldir'].values[0]
-    dest_project_path = os.path.join(template_dir, final_dir, destination)
+    if isinstance(final_dir, str) and final_dir == 'psx_finaldir':
+        final_dir = config.OUTPUT_DIRS["psx_output"]
+    
+    dest_project_path = os.path.join(final_dir, destination)
 
     # Check if the project exists, and open it if it does
     if os.path.exists(dest_project_path):
@@ -34,9 +36,6 @@ for destination in df['psx_finalname'].unique():
     else:
         print(f"Project not found: {dest_project_path}")
         continue
-    
-    # Get the project directory
-    project_dir = os.path.dirname(doc.path)
     
     # Iterate over each chunk in the project
     for chunk in doc.chunks:

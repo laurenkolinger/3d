@@ -1,6 +1,7 @@
 import Metashape
 import os
 import pandas as pd
+import config
 
 # This script automates the process of copying chunks between Metashape projects based on a CSV file. It reads the CSV, appends chunks from source projects to destination projects, and saves the results. Key steps include:
 # 
@@ -15,13 +16,12 @@ import pandas as pd
 # Open the existing project
 doc = Metashape.app.document
 
-# define start and final dir for psx
-psx_startdir = "04_psx"
-psx_finaldir = "05_outputs/psx"
+# Get input and output directories from configuration
+psx_startdir = config.INPUT_DIRS["psx_input"]
+psx_finaldir = config.OUTPUT_DIRS["psx_output"]
 
-# Get the directory one level above the project directory and read in the csv. 
-project_dir = os.path.dirname(doc.path)
-csv_file_path = os.path.join(project_dir, "..", "00_list.csv")
+# Get metadata CSV file path
+csv_file_path = config.METADATA_CSV
 
 # Read the CSV file
 df = pd.read_csv(csv_file_path)
@@ -36,8 +36,8 @@ df['prefix'] = df['filename'].str.split('_').str[:3].str.join('_')
 # df['chunk_name'] = df['site']+'_'+df['transect']
 df['chunk_name'] = df['filename']
 
-df['psx_startdir'] = psx_startdir
-df['psx_finaldir'] = psx_finaldir
+df['psx_startdir'] = os.path.relpath(psx_startdir, os.path.dirname(csv_file_path))
+df['psx_finaldir'] = os.path.relpath(psx_finaldir, os.path.dirname(csv_file_path))
 df['psx_finalname'] = df['prefix']+'.psx'
 
 # Write the updated DataFrame back to the same CSV file
@@ -46,7 +46,7 @@ df.to_csv(csv_file_path, index=False)
 # Iterate over each unique destination
 for destination in df['psx_finalname'].unique():
     # Create or open the destination .psx project
-    dest_project_path = os.path.join(os.path.dirname(csv_file_path), "05_outputs/psx", destination)
+    dest_project_path = os.path.join(psx_finaldir, destination)
     dest_doc = Metashape.Document()
     
     if os.path.exists(dest_project_path):
@@ -60,7 +60,7 @@ for destination in df['psx_finalname'].unique():
     # Iterate over each row and append the corresponding chunk from the origin .psx
     for _, row in rows.iterrows():
         print(row)
-        origin_project_path = os.path.join(os.path.dirname(project_dir), psx_startdir, row['psx_startname'])
+        origin_project_path = os.path.join(psx_startdir, row['psx_startname'])
         origin_doc = Metashape.Document()
         origin_doc.open(origin_project_path, read_only=True)
         finalchunklab = row['filename']
