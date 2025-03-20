@@ -1,11 +1,15 @@
 # Required Python packages for TCRMP 3D Processing Pipeline
 
 # Core dependencies
-pyyaml>=6.0.1       # For YAML configuration file parsing
-pandas>=2.0.0       # For data manipulation and CSV handling
-numpy>=1.24.0       # For numerical operations
-opencv-python>=4.8.0  # For video frame extraction (step0.py)
+pyyaml==6.0.1       # For YAML configuration file parsing
+pandas==1.5.3       # For data manipulation and CSV handling (compatible with Python 3.9)
+numpy==1.24.3       # For numerical operations (compatible with Python 3.9)
+opencv-python==4.8.0.74  # For video frame extraction (step0.py)
 
 # Optional dependencies
-matplotlib>=3.7.0   # For visualization (if needed)
-pillow>=10.0.0      # For image manipulation 
+matplotlib==3.7.2   # For visualization (if needed)
+pillow==10.0.0      # For image manipulation
+
+# Note: When using with Metashape, install these packages in Metashape's Python environment:
+# macOS: /Applications/MetashapePro.app/Contents/Frameworks/Python.framework/Versions/3.9/bin/pip3 install -r requirements.txt
+# Windows: "C:\Program Files\Agisoft\Metashape Pro\python\python.exe" -m pip install -r requirements.txt 
