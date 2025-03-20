@@ -1,222 +1,277 @@
-# TCRMP 3D Processing: Standard Operating Procedure
+# TCRMP 3D Processing Pipeline
 
-This repository provides a standardized framework for 3D reconstruction of coral reef transects, developed by the Territorial Coral Reef Monitoring Program (TCRMP).
+A comprehensive workflow for processing 3D coral reef models from video footage.
 
-## Quick Start
+## Overview
 
-1. Create a new project directory and copy the example project structure:
+This project provides a set of Python scripts to automate the workflow of processing underwater video footage into 3D models of coral reefs. The pipeline uses Agisoft Metashape for 3D reconstruction and is designed to work with the Territorial Coral Reef Monitoring Program (TCRMP) methodology.
+
+## Requirements
+
+- Agisoft Metashape Pro (v2.1.1 or later)
+- Python 3.9+
+- Required Python packages (install with `pip install -r requirements.txt`):
+  - PyYAML
+  - pandas
+  - numpy
+  - opencv-python
+
+## Project Structure
+
+```
+TCRMP_3D/
+├── config/                  # Configuration files
+│   └── analysis_params.yaml # Base configuration template
+├── examples/                # Example projects
+│   └── sample_project/      # Sample project with demo data
+├── presets/                 # Preset files for software
+│   ├── lightroom/           # Adobe Lightroom presets
+│   └── premiere/            # Adobe Premiere presets
+├── src/                     # Source code
+│   ├── config.py            # Configuration utilities
+│   ├── step0.py             # Frame extraction
+│   ├── step1.py             # Initial 3D processing
+│   ├── step2.py             # Chunk management
+│   ├── step3.py             # Model processing and exports
+│   └── step4.py             # Final exports and web publishing
+└── README.md                # This file
+```
+
+## Initial Setup
+
+1. Clone this repository to your local machine:
+   ```bash
+   git clone https://github.com/yourusername/TCRMP_3D.git
+   cd TCRMP_3D
+   ```
+
+2. Create a Python virtual environment:
+   ```bash
+   python -m venv .venv
+   ```
+
+3. Activate the virtual environment:
+   - On Windows:
+     ```
+     .venv\Scripts\activate
+     ```
+   - On macOS/Linux:
+     ```
+     source .venv/bin/activate
+     ```
+
+4. Install required packages:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+5. Copy the sample project as a template for your own project:
    ```bash
    cp -r examples/sample_project my_new_project
    cd my_new_project
    ```
 
-2. Set up the Python virtual environment in your project directory:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
-   pip install -r ../requirements.txt
-   ```
+6. Edit the `analysis_params.yaml` file in your project directory to configure the processing parameters.
 
-3. Edit `analysis_params.yaml` in your project directory to set your parameters:
-   ```yaml
-   # Project Information
-   project:
-     name: "My_Project_Name"
-     notes: |
-       Description of your project and any important notes.
+## Workflow Overview
 
-   # Directory Configuration
-   directories:
-     video_source: "video_source"  # Directory containing MP4/MOV files
-     base: "."  # Current directory (where .venv is located)
-     data: "data"  # Will be created in your project directory
-     output: "output"  # Will be created in your project directory
-     adobe_presets: "../../presets/lightroom"
-     metashape_presets: "../../presets/premiere"
-     scripts: "../../src"  # Location of processing scripts
-     config: "../../src/config.py"  # Location of config file
+The complete processing workflow consists of the following steps:
 
-   # Processing Parameters
-   processing:
-     # Frame Extraction (step0.py)
-     frames_per_transect: 1200
-     extraction_rate: 0.5  # 1.0 = all frames, 0.5 = every other frame
-     
-     # Initial 3D Processing (step1.py)
-     chunk_size: 400
-     use_gpu: true
-     metashape:
-       quality: 2  # 1=highest, 8=lowest quality but faster
-       defaults:
-         accuracy: "high"
-         quality: "high"
-         depth_filtering: "moderate"
-         max_neighbors: 100
-         alignment:
-           downscale: 2
-           generic_preselection: true
-           reference_preselection: false
-         optimization:
-           fit_f: true
-           fit_cx: true
-           fit_cy: true
-           fit_b1: true
-           fit_b2: true
-           fit_k1: true
-           fit_k2: true
-           fit_k3: true
-           fit_k4: true
-           fit_p1: true
-           fit_p2: true
-           fit_p3: true
-           fit_p4: true
-           adaptive_fitting: false
-         mesh:
-           surface_type: "Arbitrary"
-           interpolation: "EnabledInterpolation"
-           face_count: "HighFaceCount"
-           source_data: "DenseCloudData"
-     
-     # Chunk Management (step2.py)
-     chunk_quality:
-       min_cameras: 10
-       min_alignment_percentage: 90
-     
-     # Exports and Scale Bars (step3.py)
-     model_cleanup:
-       min_faces: 100
-       min_vertices: 50
-     orthomosaic:
-       resolution: 0.001  # 1mm resolution
-       save_alpha: true
-       save_world: true
-       save_xyz: true
-     model_export:
-       texture_format: "JPEG"
-       save_texture: true
-       save_uv: true
-       save_normals: true
-       save_colors: true
-     
-     # Final Exports (step4.py)
-     final_orthomosaic:
-       resolution: 0.0005  # 0.5mm resolution
-       save_alpha: true
-       save_world: true
-       save_xyz: true
-     final_model:
-       texture_format: "JPEG"
-       texture_size: 4096
-       save_texture: true
-       save_uv: true
-       save_normals: true
-       save_colors: true
-     point_cloud:
-       format: "LAS"
-       save_colors: true
-       save_normals: true
-     
-     # Web Publishing
-     sketchfab:
-       token: "your_sketchfab_api_token_here"
-       decimated_vertices: 3000000
-     psx_filename: "TCRMP_3D_{site}_{date}"  # Template for final PSX files in output/psx/
-   ```
+1. **Frame Extraction** (step0.py): Extract frames from video footage
+2. **Initial 3D Processing** (step1.py): Process extracted frames to create initial 3D models
+3. **Manual Quality Check & Alignment**: Check and align models (manual step)
+4. **Chunk Management** (step2.py): Organize chunks by site
+5. **Manual Straightening & Scaling**: Straighten and scale models (manual step)
+6. **Model Processing and Exports** (step3.py): Add scale bars, remove small components, export assets
+7. **Manual Touchups**: Review and touch up models (manual step)
+8. **Final Exports & Web Publishing** (step4.py): Create final exports and upload to Sketchfab
 
-4. Process your videos:
-   ```bash
-   # Extract frames from videos
-   PYTHONPATH=../../src python3 ../../src/step0.py
+## Detailed Workflow
 
-   # Initial 3D processing with Metashape
-   PYTHONPATH=../../src python3 ../../src/step1.py
+### Step 0: Frame Extraction
 
-   # Group chunks by site
-   PYTHONPATH=../../src python3 ../../src/step2.py
+This step extracts frames from video footage at a specified rate.
 
-   # Export models and add scale bars
-   PYTHONPATH=../../src python3 ../../src/step3.py
+```bash
+# Activate the virtual environment first
+source .venv/bin/activate  # On macOS/Linux
+# or
+.venv\Scripts\activate     # On Windows
 
-   # Upload to Sketchfab
-   PYTHONPATH=../../src python3 ../../src/step4.py
-   ```
-
-## Project Structure
-
-Each project directory should have this structure:
-```
-my_new_project/
-├── .venv/                  # Python virtual environment
-├── video_source/          # Place your MP4/MOV files here
-├── data/                  # Created automatically
-│   ├── frames/           # Extracted video frames
-│   ├── processed_frames/ # Edited frames (if needed)
-│   ├── psx_input/        # Input Metashape projects
-│   └── *_processing_status.txt  # Auto-generated status files
-├── output/               # Created automatically
-│   ├── models/          # 3D models
-│   ├── orthomosaics/    # Orthomosaic images
-│   ├── psx/             # Final Metashape projects
-│   ├── reports/         # Processing reports
-│   └── reports_initial/ # Initial processing reports
-└── analysis_params.yaml  # Project configuration file
+# Run step0.py
+python ../../src/step0.py
 ```
 
-## Repository Structure
+This will:
+1. Scan the `video_source` directory for video files
+2. Create a subdirectory for each video in the `frames` directory
+3. Extract frames according to the settings in `analysis_params.yaml`
+4. Create a tracking CSV file for each model
+5. Generate a summary of extracted frames
 
-The repository follows standard software development practices:
+### Step 1: Initial 3D Processing
 
-```
-├── src/                     # Source code
-│   ├── config.py            # Configuration module (loads from YAML)
-│   ├── step0.py             # Frame extraction script
-│   ├── step1.py             # Initial 3D processing 
-│   ├── step2.py             # Chunk management
-│   ├── step3.py             # Exports and scale bars
-│   └── step4.py             # Web publishing
-│
-├── data/                    # Data directories
-│   ├── frames/              # Extracted video frames
-│   ├── processed_frames/    # Edited frames (if needed)
-│   ├── psx_input/           # Input Metashape projects
-│   └── *_processing_status.txt  # Auto-generated status files
-│
-├── output/                  # Processing outputs
-│   ├── models/              # 3D models
-│   ├── orthomosaics/        # Orthomosaic images
-│   ├── psx/                 # Final Metashape projects
-│   ├── reports/             # Reports
-│   └── reports_initial/     # Initial processing reports
-│
-├── presets/                 # Application presets
-│   ├── lightroom/           # Lightroom presets
-│   └── premiere/            # Premiere Pro presets
-│
-├── docs/                    # Documentation
-│
-└── examples/                # Example project structures
-    └── sample_project/      # Sample project with example configuration
+This step performs the initial 3D reconstruction using the extracted frames. It creates batched PSX files with multiple models grouped together for efficiency.
+
+```bash
+# For macOS users
+PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step1.py
+
+# For Windows users
+set PYTHONPATH=.venv\Lib\site-packages
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step1.py
 ```
 
-## Example Project
+This will:
+1. Find all model directories in the `frames` directory
+2. Group models into batches (maximum 5 models per batch by default)
+3. For each model:
+   - Add photos and align cameras
+   - Filter points and optimize cameras
+   - Build depth maps and create 3D model
+   - Apply textures and generate report
+4. Save each batch as a separate PSX file in the `psx_input` directory
+5. Create a batch summary CSV file mapping models to PSX files
 
-The repository includes an example project structure in the `examples/sample_project/` directory that demonstrates:
+### Manual Step: Quality Check & Alignment
 
-- Sample YAML configuration file (`analysis_params.yaml`)
-- Complete directory structure matching the recommended layout
-- README explaining how to use the example as a template
+After Step 1, manually check the quality of the generated models and make any necessary adjustments:
 
-You can examine this example to see how to organize your own data and workflows.
+1. Open each PSX file in the `psx_input` directory with Metashape
+2. For each model (chunk) in the project:
+   - Review camera alignment and model quality
+   - Ensure point cloud is clean and representative of the model
+   - Check for any alignment issues or artifacts
+   - Identify any areas that might need adjustments in Step 2
+   - Verify that model IDs are correctly labeled
+3. Save the project
+
+### Step 2: Chunk Management
+
+This step consolidates chunks by site to prepare for final processing.
+
+```bash
+# For macOS users
+PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step2.py
+
+# For Windows users
+set PYTHONPATH=.venv\Lib\site-packages
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step2.py
+```
+
+This will:
+1. Read the tracking files to identify completed models
+2. Group models by site
+3. Create new PSX files organized by site in the `psx_output` directory
+4. Update tracking information for each model
+
+### Manual Step: Straightening & Scaling
+
+After Step 2, manually straighten and scale each model:
+
+1. Open each project in the `05_outputs/psx` directory
+2. For each chunk in the project:
+
+   **Straightening:**
+   - Load the textured model
+   - Auto-adjust brightness and contrast in one of the images to improve texture
+   - Switch to rotate model view
+   - Rotate the model so it aligns horizontally at the top of the view
+   - Use "Model > Region > Rotate Region to View" to set the alignment
+   - Resize the region to "crop" to the model area (use top XY and side views)
+   - Use the rectangular crop tool to crop to the model area bounded by the region
+
+   **Scaling (if using manual scaling):**
+   - Place markers on scale bars in the model
+   - Set up at least 2 scale bars at different locations in the model
+   - Set the known distance for each scale bar in the Reference pane
+   - Press the Refresh button to update the scale
+   - Verify that the error is less than 0.01
+   
+3. Save the project
+
+> **Note:** Make sure you are only working from ONE PSX file in the psx_input directory. The system should create just one processing status file and update that one file.
+
+### Step 3: Model Processing and Exports
+
+This step adds scale bars (if coded targets are present), removes small components, builds and exports orthomosaics, textured models, and reports.
+
+```bash
+# For macOS users
+PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step3.py
+
+# For Windows users
+set PYTHONPATH=.venv\Lib\site-packages
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step3.py
+```
+
+This will:
+1. Process each project in the `psx_output` directory
+2. For each model (chunk) in the project:
+   - Add scale bars if coded targets are present
+   - Remove small disconnected components from the model
+   - Build and export orthomosaic
+   - Export textured model
+   - Generate report
+3. Save exports to the appropriate directories
+
+### Manual Step: Model Review and Touchups
+
+After Step 3, manually review and touch up the models:
+
+1. Open each project in Metashape
+2. For each chunk:
+   - Review the orthomosaic for quality, artifacts, or holes
+   - Check the textured model for issues with geometry or texture
+   - Fill any small holes in the model if necessary
+   - Adjust texture blending if needed
+   - Check that small disconnected components were properly removed
+   - Verify that scale bars are correctly set up (if applicable)
+   - Review model colors and brightness, make adjustments if needed
+3. Save the project
+
+### Step 4: Final Exports and Web Publishing
+
+This step creates final high-resolution outputs and uploads decimated models to Sketchfab for web viewing.
+
+```bash
+# For macOS users
+PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step4.py
+
+# For Windows users
+set PYTHONPATH=.venv\Lib\site-packages
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step4.py
+```
+
+This will:
+1. For each model (chunk) in the project:
+   - Create a decimated copy for web viewing
+   - Upload to Sketchfab (if API token is provided)
+   - Export high-resolution orthomosaic
+   - Export high-resolution textured model
+   - Export point cloud
+   - Generate comprehensive report
+2. Save all exports to the `final_outputs` directory
 
 ## Configuration
 
-The project uses a YAML-based configuration system for easy parameter management:
+The processing pipeline is configured through YAML files:
 
-- **User-friendly configuration**: Edit `analysis_params.yaml` in your project directory
-- **Flexible Paths**: Point to videos and outputs stored anywhere on your system
-- **Automatic Directory Creation**: All required directories are created automatically
-- **Customizable Parameters**: Adjust frame extraction, model quality, and other settings
-- **Status Tracking**: Automatic generation and updating of processing status files
+- Base configuration: `config/analysis_params.yaml`
+- Project-specific configuration: `examples/sample_project/analysis_params.yaml`
+
+Modify these files to adjust processing parameters to your needs.
+
+### Key Configuration Parameters
+
+- **max_chunks_per_psx**: Maximum number of chunks/models per PSX file (default: 5)
+- **reconstruction_uncertainty**: Maximum allowable reconstruction uncertainty (default: 50)
+- **reprojection_error**: Maximum reprojection error in pixels (default: 1)
+- **projection_accuracy**: Maximum projection accuracy value (default: 10)
+- **depth_downscale**: Downscale factor for depth maps (default: 4)
+- **texture_size**: Texture size in pixels (default: 16384)
+
+See the configuration files for complete parameter descriptions.
 
 ## Field Methods
 
@@ -352,242 +407,96 @@ Each pass should be approximately 10 meters long and take about 1 minute, mainta
 #### Post-Filming
 - Press center button on each light for 2s to put lights to sleep
 
-## Processing Workflow
+## Running a Sample Project
 
-1. **Video Processing**
-   - Edit videos in Premiere Pro using provided presets
-   - Export as MOV/MP4 files
-   - Place processed videos in project's `video_source` directory
+1. Clone this repository
+2. Navigate to the sample project directory: `cd examples/sample_project`
+3. Run each step in sequence, performing the manual steps between automated ones
+4. Check the output directories for results
 
-2. **Frame Extraction**
-   - Run `step0.py` to extract frames from videos
-   - Frames are saved in `data/frames/`
-   - Status file is created in `data/`
+## Command Reference
 
-3. **Initial 3D Processing**
-   - Run `step1.py` to create Metashape projects
-   - Align frames and build dense clouds
-   - Projects are saved in `data/psx_input/` with transect-based names
-
-4. **Chunk Management**
-   - Run `step2.py` to group chunks by site
-   - Create new Metashape projects for each site
-   - Projects are saved in `output/psx/` using the template from analysis_params.yaml
-
-5. **Export and Scale Bars**
-   - Run `step3.py` to export models and orthomosaics
-   - Add scale bars to models
-   - Outputs are saved in `output/models/` and `output/orthomosaics/`
-
-6. **Web Publishing**
-   - Run `step4.py` to upload models to Sketchfab
-   - Generate processing reports
-   - Reports are saved in `output/reports/`
-
-Each step updates the status file in `data/` to track progress and any issues encountered.
-
-## Video Encoding (Premier Pro)
-
--   Upload contents of memory card into computer (connect using special mem card reader compatible with CF Express, careful of magnets on the mem card reader)
-
--   **Starting with .CRM, export to MP4 or MOV without applying LUTs**
-
--   Export preset: `presets/premiere/step0_premierepro_uhd_8k_23sept2024.epr` 
-
--   Use the following naming convention for consistent transect identification:
-
-    -   Example: `TCRMP20240311_3D_BID_T1_3.MP4`
-
-        -   `TCRMP20240311` = TCRMP plus date (YYYYMMDD)
-
-        -   `3D` = demographic
-
-        -   `BID` = sitecode
-
-        -   `T1` = transect number
-
-        -   `3` = pass number (if separated vids by pass)
-
--   Save videos to your preferred directory - set this location in the configuration file
-
--   Format/wipe/initialize memory card after the videos have been uploaded and backed up
-
-## Extract Frames (Python)
-
-The frame extraction process uses a Python script (`src/step0.py`) that leverages ffmpeg.
-
-### Requirements
-
-- ffmpeg and ffprobe must be installed and available in your system PATH
-- Python 3.6+ with the required libraries
-
-### Running the Script
-
-After configuring `analysis_params.yaml` with your video source directory:
+Complete set of commands for running the entire workflow:
 
 ```bash
-# Navigate to your project directory
-cd my_new_project
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On macOS/Linux
+# OR
+.venv\Scripts\activate     # On Windows
 
-# Run the extraction script
-python src/step0.py
+# Install dependencies
+pip install -r requirements.txt
+
+# Step 0: Frame Extraction
+python ../../src/step0.py
+
+# Step 1: Initial 3D Processing
+# macOS
+PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step1.py
+# Windows
+set PYTHONPATH=.venv\Lib\site-packages
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step1.py
+
+# [MANUAL STEP: Quality Check & Alignment]
+
+# Step 2: Chunk Management
+# macOS
+PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step2.py
+# Windows
+set PYTHONPATH=.venv\Lib\site-packages
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step2.py
+
+# [MANUAL STEP: Straightening & Scaling]
+
+# Step 3: Model Processing and Exports
+# macOS
+PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step3.py
+# Windows
+set PYTHONPATH=.venv\Lib\site-packages
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step3.py
+
+# [MANUAL STEP: Model Review and Touchups]
+
+# Step 4: Final Exports and Web Publishing
+# macOS
+PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step4.py
+# Windows
+set PYTHONPATH=.venv\Lib\site-packages
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step4.py
 ```
 
-The script will:
-1. Read your configured video source directory
-2. Find all MP4 and MOV files
-3. Group videos by transect ID based on filename
-4. Extract frames from each video
-5. Save frames in the configured output directory
-6. Update the status file with progress information
+## Troubleshooting
 
-### Advanced Options
+### Common Issues
 
-You can override the configuration file settings using command-line arguments:
+1. **Missing PyYAML package in Metashape**
+   
+   Install PyYAML in Metashape's Python environment:
+   ```bash
+   /Applications/MetashapePro.app/Contents/Frameworks/Python.framework/Versions/3.9/bin/pip3 install pyyaml
+   ```
+   
+   On Windows:
+   ```bash
+   "C:\Program Files\Agisoft\Metashape Pro\python\python.exe" -m pip install pyyaml
+   ```
 
-```bash
-# Override source and output directories
-python src/step0.py --video-dir /different/video/path --output-dir /custom/output/path
+2. **PSX files not generated**
+   
+   Ensure that the `psx_input` directory exists and is writable. Check the log file in the `reports` directory for error messages.
 
-# Custom frame count
-python src/step0.py --frames 1800
-```
+3. **Missing pandas package**
+   
+   If using Metashape's Python, install pandas:
+   ```bash
+   /Applications/MetashapePro.app/Contents/Frameworks/Python.framework/Versions/3.9/bin/pip3 install pandas
+   ```
 
-## Optional: Photo Editing
+## License
 
-While not required, you can optionally edit the extracted frames in Adobe Lightroom Classic:
+[MIT License](LICENSE)
 
-1. Import the extracted frames into Lightroom
-2. Apply the preset `presets/lightroom/step0_lightroom_hdrphoto_r5c.xmp`
-3. Export to the processed frames directory (`data/processed_frames`)
+## Acknowledgments
 
-Future versions may incorporate algorithmic color correction methods like [Sea Thru](https://www.deryaakkaynak.com/sea-thru).
-
-## 3D processing (metashape pro)
-
-### File setup
-
-- Open new Metashape file
-- Add photos to it corresponding to each transect. You can use the frames directory created during the extraction step.
-- Save as PSX in your designated input PSX directory (as configured in `analysis_params.yaml`, default is `data/psx_input`).
-
-### step1.py
-
-Run `src/step1.py`: in Metashape, select Tools, Run Script, and point to the `src/step1.py`.
-
-::: callout-warning
-This is the most time-consuming step and can take a few hours per chunk.
-:::
-
-This script performs the following operations:
-
-1. Aligns photos
-2. Removes points with high reconstruction uncertainty (configurable in analysis_params.yaml)
-3. Optimizes cameras
-4. Removes points with high reprojection error (configurable in analysis_params.yaml)
-5. Removes points with high projection accuracy (configurable in analysis_params.yaml)
-6. Rotates the coordinate system to the bounding box
-7. Builds dense cloud with quality setting (configurable in analysis_params.yaml)
-8. Builds model
-9. Builds UV maps
-10. Builds texture
-11. Generates a report in the configured output directory
-12. Saves the project
-
-The script uses the paths and parameters defined in the configuration file.
-
-### Check models
-
-Go through each chunk and check:
-
-- Each transect is roughly visible when you use 0 to reset view
-- There are no mirror images or huge gaps in photos (< 90% photos aligned should be a red flag)
-- Scale bars are visible
-
-Disable chunks that are not good quality (e.g., < 90% of photos aligned)
-
-### step2.py
-
-Run `src/step2.py`: in Metashape, select Tools, Run Script, and point to the `src/step2.py`.
-
-This script:
-
-1. Reads the status file
-2. Groups chunks by site
-3. Creates new PSX projects in the output directory (configurable in analysis_params.yaml)
-4. Copies the appropriate chunks from source projects to destination projects
-5. Updates the status file with progress information
-
-### Straighten / scale models
-
-Open each project and do the following for each chunk:
-
-**Straightening**
-
-- Load textured model
-- Auto change brightness and contrast in one of the images; this will be applied to the texture
-- Change to rotate model view and rotate the transect so the transect line lines up horizontally and is top of view
-- Model > Region > Rotate region to view
-- Resize region to "crop" to transect area (do this for top xy and side views)
-- Use rectangular crop tool to crop to transect area bound by region
-
-**Scaling (only if scaling manually)**
-
-- Place markers on scales - set up at least 2 scale bars
-- Set distance in reference pane
-- Press refresh button - make sure error less than .01
-
-**Save project**
-
-### step3.py
-
-Run `src/step3.py`: in Metashape, select Tools, Run Script, and point to the `src/step3.py`.
-
-This script:
-
-1. Adds scale bars to the model if markers are detected
-2. Removes small components from the model
-3. Exports orthomosaic to the configured output directory
-4. Exports textured model to the configured output directory
-5. Exports report to the configured output directory
-6. Saves the project
-
-The script processes all projects listed in the status file, using the paths defined in the configuration file.
-
-### step4.py
-
-Run `src/step4.py`: in Metashape, select Tools, Run Script, and point to the `src/step4.py` file.
-
-This script:
-
-1. Duplicates each chunk and creates a temporary version
-2. Decimates the model to a specified number of vertices (configurable in analysis_params.yaml)
-3. Uploads the decimated model to Sketchfab using an API token (configurable in analysis_params.yaml)
-4. Deletes the temporary chunk after upload
-5. Saves the project
-
-## Example Project
-
-The repository includes an example project structure in the `examples/sample_project/` directory that demonstrates:
-
-- Sample configuration file (`src/config.py`)
-- Example tracking CSV with sample data
-- Complete directory structure matching the recommended layout
-- README explaining how to use the example as a template
-
-You can examine this example to see how to organize your own data and workflows.
-
-## Summary of improvements
-
-The repository has been restructured with the following benefits:
-
-1. **Standardized directory structure**: Following software development best practices
-2. **User-friendly configuration**: Simple setup at the top of config.py
-3. **Flexible directory structure**: Point to videos stored anywhere on your system
-4. **No file copying required**: Process videos in-place without unnecessary duplication
-5. **Support for multiple video formats**: Works with both MP4 and MOV files
-6. **Automatic tracking**: CSV file automatically tracks progress and file locations
-7. **Configurable parameters**: All settings are centralized and clearly documented
-8. **Command-line options**: Run scripts with custom parameters without editing files
-9. **All-Python workflow**: Consistent programming language across all processing steps
-10. **Example project**: Sample setup to guide new users
+This project was developed for the Territorial Coral Reef Monitoring Program.

@@ -1,0 +1,105 @@
+# Project Information
+project:
+  name: "TCRMP_3D"
+  notes: |
+    Base configuration file with all default parameters for TCRMP 3D processing.
+    This serves as the reference configuration.
+
+# Directory Configuration
+directories:
+  video_source: "video_source"  # Directory containing MP4/MOV files
+  base: "."  # Current directory
+  data: "data"  # Will be created in project directory
+  output: "output"  # Will be created in project directory
+  adobe_presets: "../../presets/lightroom"
+  metashape_presets: "../../presets/premiere"
+  scripts: "../../src"  # Location of processing scripts
+  config: "../../src/config.py"  # Location of config file
+  final_outputs: "output/final"  # Location for final outputs
+
+# Processing Parameters
+processing:
+  # Frame Extraction (step0.py)
+  frames_per_transect: 1200  # Number of frames to extract per transect
+  extraction_rate: 0.5  # 1.0 = all frames, 0.5 = every other frame
+  
+  # Initial 3D Processing (step1.py)
+  chunk_size: 400  # Number of frames per chunk
+  use_gpu: true  # Use GPU acceleration in Metashape
+  
+  # Metashape Processing Settings
+  metashape:
+    quality: 2  # 1=highest, 8=lowest quality but faster
+    defaults:
+      accuracy: "high"
+      quality: "high"
+      depth_filtering: "moderate"
+      max_neighbors: 100
+    alignment:
+      downscale: 2
+      generic_preselection: true
+      reference_preselection: false
+    optimization:
+      fit_f: true
+      fit_cx: true
+      fit_cy: true
+      fit_b1: true
+      fit_b2: true
+      fit_k1: true
+      fit_k2: true
+      fit_k3: true
+      fit_k4: true
+      fit_p1: true
+      fit_p2: true
+      fit_p3: true
+      fit_p4: true
+      adaptive_fitting: false
+    mesh:
+      surface_type: "Arbitrary"
+      interpolation: "EnabledInterpolation"
+      face_count: "HighFaceCount"
+      source_data: "DenseCloudData"
+  
+  # Chunk Management (step2.py)
+  chunk_quality:
+    min_cameras: 10
+    min_alignment_percentage: 90
+  
+  # Exports and Scale Bars (step3.py)
+  model_cleanup:
+    min_faces: 100
+    min_vertices: 50
+  orthomosaic:
+    resolution: 0.001  # 1mm resolution
+    save_alpha: true
+    save_world: true
+    save_xyz: true
+  model_export:
+    texture_format: "JPEG"
+    save_texture: true
+    save_uv: true
+    save_normals: true
+    save_colors: true
+  
+  # Final Exports (step4.py)
+  final_orthomosaic:
+    resolution: 0.0005  # 0.5mm resolution
+    save_alpha: true
+    save_world: true
+    save_xyz: true
+  final_model:
+    texture_format: "JPEG"
+    texture_size: 4096
+    save_texture: true
+    save_uv: true
+    save_normals: true
+    save_colors: true
+  point_cloud:
+    format: "LAS"
+    save_colors: true
+    save_normals: true
+  
+  # Web Publishing
+  sketchfab:
+    token: "your_sketchfab_api_token_here"
+    decimated_vertices: 3000000 

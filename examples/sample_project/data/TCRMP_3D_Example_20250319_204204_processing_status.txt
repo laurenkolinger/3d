@@ -1,0 +1,45 @@
+TCRMP 3D Processing Status Report
+================================
+
+Project: TCRMP_3D_Example
+Started: 20250319_204204
+Video Source: video_source
+Data Directory: data
+Output Directory: output
+
+Project Notes:
+Example project demonstrating the TCRMP 3D processing workflow.
+This is a template for setting up new projects.
+
+Step 0 Parameters:
+----------------
+Frames per transect: 100
+Extraction rate: 0.5
+
+Transect Processing Status:
+-------------------------
+
+
+Transect: TCRMP20241014_3D_BWR_T2
+Status: Step 1 complete
+Step 1 complete: True
+Step 1 start time: 2025-03-19 20:42:04
+Step 1 end time: 2025-03-19 20:50:39
+Step 1 processing time (s): 514.814037
+Aligned cameras: 98
+Total cameras: 100
+PSX file: data/psx_input/TCRMP20241014_3D_BWR_T2_step1.psx
+Report file: output/reports/TCRMP20241014_3D_BWR_T2_step1.pdf
+
+
+Transect: TCRMP20241014_3D_BWR_T1
+Status: Step 1 complete
+Step 1 complete: True
+Step 1 start time: 2025-03-19 20:50:39
+Step 1 end time: 2025-03-19 20:58:06
+Step 1 processing time (s): 447.2671
+Aligned cameras: 98
+Total cameras: 100
+PSX file: data/psx_input/TCRMP20241014_3D_BWR_T1_step1.psx
+Report file: output/reports/TCRMP20241014_3D_BWR_T1_step1.pdf
+

@@ -18,8 +18,10 @@ from config import (
     EXTRACTION_RATE,
     PROJECT_NAME,
     update_tracking,
-    get_transect_status
+    get_transect_status,
+    initialize_tracking
 )
+import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -42,7 +44,7 @@ def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate)
         extraction_rate (float): Rate at which to extract frames (1.0 = all frames)
     
     Returns:
-        int: Number of frames extracted
+        int, list: Number of frames extracted and list of frame paths
     """
     # Open video file
     cap = cv2.VideoCapture(video_path)
@@ -69,6 +71,8 @@ def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate)
     
     # Extract frames
     frames_extracted = 0
+    extracted_frame_paths = []
+    
     for frame_idx in frame_indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, frame = cap.read()
@@ -76,9 +80,10 @@ def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate)
             output_path = os.path.join(output_dir, f"frame_{frame_idx:06d}.jpg")
             cv2.imwrite(output_path, frame)
             frames_extracted += 1
+            extracted_frame_paths.append(output_path)
     
     cap.release()
-    return frames_extracted
+    return frames_extracted, extracted_frame_paths
 
 def process_video(video_path):
     """
@@ -86,6 +91,9 @@ def process_video(video_path):
     
     Args:
         video_path (str): Path to the video file
+        
+    Returns:
+        str, bool: Transect ID and success status
     """
     # Get video filename without extension
     video_name = os.path.splitext(os.path.basename(video_path))[0]
@@ -93,43 +101,97 @@ def process_video(video_path):
     # Create output directory for this video
     output_dir = os.path.join(DIRECTORIES["frames"], video_name)
     
+    # Initialize tracking file
+    initialize_tracking(video_name)
+    
     # Check if already processed
     status = get_transect_status(video_name)
-    if status.get("Frames extracted", "0") != "0":
+    if status.get("Step 0 complete", "False") == "True":
         logging.info(f"Video {video_name} already processed, skipping...")
-        return
+        return video_name, True
     
     try:
+        start_time = datetime.datetime.now()
+        logging.info(f"Starting frame extraction for {video_name}")
+        
         # Extract frames
-        frames_extracted = extract_frames(
+        frames_extracted, frame_paths = extract_frames(
             video_path,
             output_dir,
             FRAMES_PER_TRANSECT,
             EXTRACTION_RATE
         )
         
+        end_time = datetime.datetime.now()
+        processing_time = (end_time - start_time).total_seconds()
+        
         # Update tracking file
         update_tracking(video_name, {
             "Status": "Frames extracted",
             "Frames extracted": str(frames_extracted),
             "Step 0 complete": "True",
+            "Step 0 start time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "Step 0 end time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "Step 0 processing time (s)": str(processing_time),
+            "Frames directory": output_dir,
             "Notes": f"Extracted {frames_extracted} frames"
         })
         
-        logging.info(f"Successfully extracted {frames_extracted} frames from {video_name}")
+        logging.info(f"Successfully extracted {frames_extracted} frames from {video_name} in {processing_time:.1f} seconds")
+        return video_name, True
         
     except Exception as e:
-        logging.error(f"Error processing {video_name}: {str(e)}")
+        error_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        error_msg = f"Error processing {video_name}: {str(e)}"
+        logging.error(error_msg)
+        
         update_tracking(video_name, {
             "Status": "Error in frame extraction",
+            "Step 0 complete": "False",
+            "Step 0 error time": error_time,
             "Notes": f"Error: {str(e)}"
         })
+        return video_name, False
+
+def create_frame_summary():
+    """Create a summary of extracted frames for all transects."""
+    summary_path = os.path.join(DIRECTORIES["data_root"], "frame_extraction_summary.csv")
+    
+    # Create output directories if they don't exist
+    for dir_path in [DIRECTORIES["data_root"], DIRECTORIES["reports"]]:
+        os.makedirs(dir_path, exist_ok=True)
+    
+    # Get all transect directories
+    frames_dir = DIRECTORIES["frames"]
+    transect_dirs = []
+    if os.path.exists(frames_dir):
+        transect_dirs = [d for d in os.listdir(frames_dir) 
+                        if os.path.isdir(os.path.join(frames_dir, d))]
+    
+    # Write summary to CSV
+    with open(summary_path, 'w') as f:
+        f.write("Transect ID,Frames Extracted,Extraction Date,Status\n")
+        
+        for transect_id in transect_dirs:
+            status = get_transect_status(transect_id)
+            frames = status.get("Frames extracted", "0")
+            date = status.get("Step 0 end time", "")
+            complete = status.get("Step 0 complete", "False")
+            
+            status_text = "Complete" if complete == "True" else "Failed"
+            f.write(f"{transect_id},{frames},{date},{status_text}\n")
+    
+    logging.info(f"Frame extraction summary saved to {summary_path}")
 
 def main():
     """Main function to process all videos in the source directory."""
+    # Create output directories if they don't exist
+    for dir_path in [DIRECTORIES["frames"], DIRECTORIES["reports"]]:
+        os.makedirs(dir_path, exist_ok=True)
+    
     # Get list of video files
     video_files = []
-    for ext in ['.mov', '.mp4']:
+    for ext in ['.mov', '.mp4', '.MOV', '.MP4']:
         video_files.extend(Path(VIDEO_SOURCE_DIRECTORY).glob(f"*{ext}"))
     
     if not video_files:
@@ -138,11 +200,23 @@ def main():
     
     logging.info(f"Found {len(video_files)} video files to process")
     
-    # Process each video
-    for video_path in video_files:
-        process_video(str(video_path))
+    # Process each video and track success
+    results = []
+    for i, video_path in enumerate(video_files):
+        logging.info(f"Processing video {i+1}/{len(video_files)}: {video_path.name}")
+        transect_id, success = process_video(str(video_path))
+        results.append((transect_id, success))
     
-    logging.info("Frame extraction complete")
+    # Create summary of results
+    create_frame_summary()
+    
+    # Report final status
+    successful = sum(1 for _, success in results if success)
+    logging.info(f"Frame extraction complete. Successfully processed {successful}/{len(video_files)} videos.")
+    
+    if successful != len(video_files):
+        failed = [transect_id for transect_id, success in results if not success]
+        logging.warning(f"Failed to process: {', '.join(failed)}")
 
 if __name__ == "__main__":
-    main() 
+    main()

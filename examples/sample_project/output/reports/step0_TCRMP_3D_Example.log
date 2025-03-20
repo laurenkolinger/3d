@@ -1,0 +1,6 @@
+2025-03-19 20:23:40,596 - INFO - Found 2 video files to process
+2025-03-19 20:23:40,596 - INFO - Starting frame extraction for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:23:45,841 - INFO - Successfully extracted 100 frames from TCRMP20241014_3D_BWR_T2 in 5.2 seconds
+2025-03-19 20:23:45,841 - INFO - Starting frame extraction for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:23:50,201 - INFO - Successfully extracted 100 frames from TCRMP20241014_3D_BWR_T1 in 4.4 seconds
+2025-03-19 20:23:50,201 - INFO - Frame extraction complete

@@ -1,18 +1,19 @@
 """
-Step 2: Chunk Management
+Step 2: Chunk Management and Consolidation
 
-This script groups chunks by site and creates new Metashape projects,
-according to the configuration specified in analysis_params.yaml.
+This script automates the process of copying chunks between Metashape projects based on
+tracking data. It reads data on processed transects, appends chunks from source
+projects to destination projects, and saves the results.
 """
 
 import os
 import logging
 import Metashape
+import pandas as pd
 from config import (
     DIRECTORIES,
     PROJECT_NAME,
-    update_tracking,
-    get_transect_status
+    get_tracking_files
 )
 
 # Configure logging
@@ -25,161 +26,117 @@ logging.basicConfig(
     ]
 )
 
-def get_site_from_transect(transect_id):
-    """
-    Extract site code from transect ID.
-    
-    Args:
-        transect_id (str): The transect identifier (e.g., "TCRMP20240311_3D_BID_T1")
-    
-    Returns:
-        str: The site code (e.g., "BID")
-    """
-    parts = transect_id.split('_')
-    if len(parts) >= 3:
-        return parts[2]  # Site code is the third part
-    return "unknown"
-
-def process_transect(transect_id, source_doc):
-    """
-    Process a single transect's chunk.
-    
-    Args:
-        transect_id (str): The transect identifier
-        source_doc (Metashape.Document): The source Metashape document
-    
-    Returns:
-        Metashape.Chunk: The processed chunk, or None if not found
-    """
-    # Find the chunk for this transect
-    chunk = None
-    for c in source_doc.chunks:
-        if c.label == transect_id:
-            chunk = c
-            break
-    
-    if not chunk:
-        logging.error(f"Chunk not found for transect {transect_id}")
-        return None
-    
-    # Check if already processed
-    status = get_transect_status(transect_id)
-    if status.get("Step 2 complete", "False") == "True":
-        logging.info(f"Transect {transect_id} already processed, skipping...")
-        return chunk
-    
-    try:
-        # Check chunk quality
-        if len(chunk.cameras) < 10:
-            raise ValueError(f"Too few cameras ({len(chunk.cameras)}) in chunk")
-        
-        # Check alignment quality
-        aligned_cameras = sum(1 for camera in chunk.cameras if camera.transform)
-        alignment_percentage = (aligned_cameras / len(chunk.cameras)) * 100
-        
-        if alignment_percentage < 90:
-            raise ValueError(f"Poor alignment ({alignment_percentage:.1f}% cameras aligned)")
-        
-        logging.info(f"Successfully processed chunk for transect {transect_id}")
-        return chunk
-        
-    except Exception as e:
-        logging.error(f"Error processing chunk for transect {transect_id}: {str(e)}")
-        update_tracking(transect_id, {
-            "Status": "Error in Step 2",
-            "Notes": f"Error: {str(e)}"
-        })
-        return None
-
-def process_site(site_id, transect_chunks):
-    """
-    Create a new Metashape project for a site.
-    
-    Args:
-        site_id (str): The site identifier
-        transect_chunks (list): List of (transect_id, chunk) tuples
-    """
-    try:
-        # Create new document
-        doc = Metashape.Document()
-        
-        # Copy chunks
-        for transect_id, chunk in transect_chunks:
-            if chunk:
-                new_chunk = doc.addChunk()
-                chunk.copy(new_chunk)
-                new_chunk.label = transect_id
-        
-        # Save project
-        psx_path = os.path.join(DIRECTORIES["psx_output"], f"{site_id}_step2.psx")
-        doc.save(psx_path)
-        
-        # Update tracking for all transects
-        for transect_id, _ in transect_chunks:
-            update_tracking(transect_id, {
-                "Status": "Step 2 complete",
-                "Step 2 complete": "True",
-                "Site PSX file": psx_path,
-                "Notes": f"Grouped with site {site_id}"
-            })
-        
-        logging.info(f"Successfully created project for site {site_id}")
-        
-    except Exception as e:
-        logging.error(f"Error creating project for site {site_id}: {str(e)}")
-        # Update tracking to indicate error
-        for transect_id, _ in transect_chunks:
-            update_tracking(transect_id, {
-                "Status": "Error in Step 2",
-                "Notes": f"Error creating site project: {str(e)}"
-            })
-
 def main():
-    """Main function to process all transects and group by site."""
-    # Get list of transect directories
-    transect_dirs = [d for d in os.listdir(DIRECTORIES["frames"]) 
-                    if os.path.isdir(os.path.join(DIRECTORIES["frames"], d))]
+    """Main function to manage chunks across projects."""
+    # Open the existing document if running in Metashape GUI
+    if Metashape.app.document:
+        doc = Metashape.app.document
+    else:
+        doc = Metashape.Document()
     
-    if not transect_dirs:
-        logging.error(f"No transect directories found in {DIRECTORIES['frames']}")
+    # Define start and final directories for PSX files
+    psx_startdir = DIRECTORIES["psx_input"]
+    psx_finaldir = DIRECTORIES["psx_output"]
+    
+    # Create the output directory if it doesn't exist
+    os.makedirs(os.path.join(DIRECTORIES["base"], psx_finaldir), exist_ok=True)
+    
+    # Get the project directory
+    project_dir = DIRECTORIES["base"]
+    
+    # Check for tracking files
+    tracking_files = get_tracking_files()
+    
+    if not tracking_files:
+        logging.error("No tracking files found. Run step1.py first to generate tracking data.")
         return
     
-    # Group transects by site
-    site_groups = {}
-    for transect_id in transect_dirs:
-        site_id = get_site_from_transect(transect_id)
-        if site_id not in site_groups:
-            site_groups[site_id] = []
-        site_groups[site_id].append(transect_id)
+    # Create or load tracking DataFrame
+    df = pd.DataFrame()
+    for tracking_file in tracking_files:
+        tracking_data = pd.read_csv(tracking_file)
+        df = pd.concat([df, tracking_data])
     
-    logging.info(f"Found {len(site_groups)} sites to process")
+    # Filter for completed Step 1 transects
+    completed_transects = df[df["Step 1 complete"] == "True"]
     
-    # Process each site
-    for site_id, transect_ids in site_groups.items():
-        logging.info(f"Processing site {site_id} with {len(transect_ids)} transects")
+    if completed_transects.empty:
+        logging.error("No completed transects found. Run step1.py first.")
+        return
+    
+    # Extract site information from transect IDs
+    # Assuming format like TCRMP20241014_3D_BWR_T1 where BWR is site and T1 is transect number
+    completed_transects["site"] = completed_transects["Transect ID"].str.split("_").str[2]
+    completed_transects["transect"] = completed_transects["Transect ID"].str.split("_").str[3]
+    completed_transects["prefix"] = completed_transects["Transect ID"].str.split("_").str[:3].str.join("_")
+    
+    # Formulate chunk names, source and destination paths
+    completed_transects["chunk_name"] = completed_transects["Transect ID"]
+    completed_transects["psx_startdir"] = psx_startdir
+    completed_transects["psx_finaldir"] = psx_finaldir
+    completed_transects["psx_finalname"] = completed_transects["prefix"] + ".psx"
+    completed_transects["psx_startname"] = completed_transects["PSX file"].apply(os.path.basename)
+    
+    # Save the updated information back to the tracking files
+    for tracking_file in tracking_files:
+        transect_id = os.path.basename(tracking_file).replace("_tracking.csv", "")
+        transect_data = completed_transects[completed_transects["Transect ID"] == transect_id]
+        if not transect_data.empty:
+            transect_data.to_csv(tracking_file, index=False)
+    
+    # Iterate over each unique destination
+    for destination in completed_transects["psx_finalname"].unique():
+        # Create or open the destination .psx project
+        dest_project_path = os.path.join(project_dir, psx_finaldir, destination)
+        dest_doc = Metashape.Document()
         
-        # Process each transect in this site
-        transect_chunks = []
-        for transect_id in transect_ids:
-            # Open the step1 project for this transect
-            psx_path = os.path.join(DIRECTORIES["psx_input"], f"{transect_id}_step1.psx")
-            if not os.path.exists(psx_path):
-                logging.error(f"Step 1 project not found for transect {transect_id}")
+        if os.path.exists(dest_project_path):
+            logging.info(f"Opening existing project: {dest_project_path}")
+            dest_doc.open(dest_project_path, read_only=False)
+        else:
+            logging.info(f"Creating new project: {dest_project_path}")
+            dest_doc.save(dest_project_path)  # Create a new project file
+        
+        # Filter the rows that correspond to this destination
+        relevant_transects = completed_transects[completed_transects["psx_finalname"] == destination]
+        
+        # Iterate over each row and append the corresponding chunk from the origin .psx
+        for _, row in relevant_transects.iterrows():
+            origin_project_path = os.path.join(project_dir, psx_startdir, row["psx_startname"])
+            origin_doc = Metashape.Document()
+            
+            try:
+                logging.info(f"Opening source project: {origin_project_path}")
+                origin_doc.open(origin_project_path, read_only=True)
+                final_chunk_label = row["Transect ID"]
+                
+                # Find the chunk by name in the origin project
+                chunk = next((ch for ch in origin_doc.chunks if ch.label == row["chunk_name"]), None)
+                
+                if chunk is not None:
+                    logging.info(f"Appending chunk: {chunk.label} from {origin_project_path} to {destination}")
+                    # Check if a chunk with this label already exists in the destination
+                    existing_chunk = next((ch for ch in dest_doc.chunks if ch.label == final_chunk_label), None)
+                    
+                    if existing_chunk is not None:
+                        logging.warning(f"Chunk {final_chunk_label} already exists in {destination}. Skipping.")
+                        continue
+                    
+                    # Append the chunk directly to the destination project
+                    chunk.label = final_chunk_label
+                    dest_doc.append(origin_doc, [chunk])
+                else:
+                    logging.error(f"Chunk {row['chunk_name']} not found in {origin_project_path}")
+            except Exception as e:
+                logging.error(f"Error processing {origin_project_path}: {str(e)}")
                 continue
-            
-            doc = Metashape.Document()
-            doc.open(psx_path)
-            
-            # Process the chunk
-            chunk = process_transect(transect_id, doc)
-            if chunk:
-                transect_chunks.append((transect_id, chunk))
         
-        # Create site project if we have any valid chunks
-        if transect_chunks:
-            process_site(site_id, transect_chunks)
+        # Save the destination project after appending all chunks
+        logging.info(f"Saving project: {dest_project_path}")
+        dest_doc.save(dest_project_path)
+        logging.info(f"Chunks appended to {destination} and saved.")
     
-    logging.info("Chunk management complete")
+    logging.info("All chunk management operations completed successfully.")
 
 if __name__ == "__main__":
     main() 

@@ -9,18 +9,45 @@ import os
 import yaml
 import datetime
 import sys
+import csv
+import glob
 from pathlib import Path
 
 def load_yaml(yaml_path):
     """Load and validate YAML file."""
-    with open(yaml_path, 'r') as f:
-        params = yaml.safe_load(f)
+    try:
+        with open(yaml_path, 'r') as f:
+            params = yaml.safe_load(f)
+    except Exception as e:
+        # If yaml module is not available, provide a helpful error message
+        if 'yaml' in str(e) and 'No module named' in str(e):
+            print("Error: The PyYAML module is not installed.")
+            print("Please install it using: pip install pyyaml")
+            print("Or for Metashape's Python environment:")
+            print("/Applications/MetashapePro.app/Contents/Frameworks/Python.framework/Versions/3.9/bin/pip3 install pyyaml")
+            print("Alternatively, modify src/config.py to work without yaml dependency.")
+            raise ImportError("PyYAML module required")
+        else:
+            raise e
     
     # Validate required sections
-    required_sections = ['project', 'directories', 'processing', 'metashape']
+    required_sections = ['project', 'directories', 'processing']
     for section in required_sections:
         if section not in params:
             raise ValueError(f"Missing required section '{section}' in YAML file")
+    
+    # Validate required processing parameters for all steps
+    required_processing = [
+        'frames_per_transect', 'extraction_rate',         # Step 0
+        'chunk_size', 'use_gpu', 'metashape',             # Step 1
+        'chunk_management',                               # Step 2
+        'model_processing',                               # Step 3
+        'final_exports'                                   # Step 4
+    ]
+    
+    for param in required_processing:
+        if param not in params['processing']:
+            print(f"Warning: Missing recommended parameter '{param}' under 'processing' in YAML file")
     
     return params
 
@@ -38,251 +65,184 @@ def get_yaml_path():
     if os.path.exists("../analysis_params.yaml"):
         return "../analysis_params.yaml"
     
+    # Then look in repository root
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    repo_yaml = os.path.join(repo_root, "analysis_params.yaml")
+    if os.path.exists(repo_yaml):
+        return repo_yaml
+    
     raise FileNotFoundError("Could not find analysis_params.yaml. Please specify the path.")
 
 # Load YAML configuration
 YAML_PATH = get_yaml_path()
 PARAMS = load_yaml(YAML_PATH)
 
-# =============================================================================
-# USER CONFIGURATION AREA - All values are loaded from YAML
-# =============================================================================
-
 # Directory containing your MP4/MOV video files
 VIDEO_SOURCE_DIRECTORY = PARAMS['directories']['video_source']
 
 # Base directory for all inputs and outputs
-BASE_DIRECTORY = PARAMS['directories']['base']  # Leave empty to use current directory
+BASE_DIRECTORY = PARAMS['directories'].get('base', '.')
 
-# Input data directory (where frames, processed frames, etc. will be stored)
-DATA_DIRECTORY = PARAMS['directories']['data']  # Leave empty to use BASE_DIRECTORY/data
+# Input data directory (where frames will be stored)
+DATA_DIRECTORY = PARAMS['directories'].get('data', 'data')
 
-# Output directory (where models, PSX files, etc. will be stored)
-OUTPUT_DIRECTORY = PARAMS['directories']['output']  # Leave empty to use BASE_DIRECTORY/output
-
-# Directory containing Adobe presets (.xmp files)
-ADOBE_PRESETS_DIRECTORY = PARAMS['directories']['adobe_presets']
-
-# Directory containing Metashape presets (.epr files)
-METASHAPE_PRESETS_DIRECTORY = PARAMS['directories']['metashape_presets']
-
-# =============================================================================
-# PROCESSING PARAMETERS
-# =============================================================================
+# Output directory (where logs will be stored)
+OUTPUT_DIRECTORY = PARAMS['directories'].get('output', 'output')
 
 # Number of frames to extract per transect
 FRAMES_PER_TRANSECT = PARAMS['processing']['frames_per_transect']
 
-# Frame extraction rate - higher means taking more frames
-# 1.0 = extract all frames, 0.5 = extract every other frame, etc.
+# Frame extraction rate
 EXTRACTION_RATE = PARAMS['processing']['extraction_rate']
 
-# Chunk size for breaking up Metashape processing
-CHUNK_SIZE = PARAMS['processing']['chunk_size']
-
-# If True, attempt to apply Adobe presets during processing
-USE_ADOBE_PRESETS = PARAMS['processing']['use_adobe_presets']
-
-# If True, use GPU acceleration in Metashape
-USE_GPU = PARAMS['processing']['use_gpu']
-
-# Number of vertices for decimated models for web upload
-DECIMATED_VERTICES = PARAMS['processing']['decimated_vertices']
-
-# Sketchfab API token for model uploads
-SKETCHFAB_API_TOKEN = PARAMS['processing']['sketchfab_token']
-
-# =============================================================================
-# PROJECT METADATA
-# =============================================================================
-
-# Project name (used in tracking file name)
+# Project metadata
 PROJECT_NAME = PARAMS['project']['name']
-
-# Project notes (will be included in tracking file)
 PROJECT_NOTES = PARAMS['project']['notes']
 
-# =============================================================================
-# INTERNAL CONFIGURATION - DO NOT MODIFY UNLESS YOU'RE SURE
-# =============================================================================
-
-# Project root directory
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# Handle directories based on user configuration
-if not BASE_DIRECTORY:
-    BASE_DIRECTORY = os.getcwd()  # Use current working directory instead of ROOT_DIR
-
-if not DATA_DIRECTORY:
-    DATA_DIRECTORY = os.path.join(BASE_DIRECTORY, "data")
-
-if not OUTPUT_DIRECTORY:
-    OUTPUT_DIRECTORY = os.path.join(BASE_DIRECTORY, "output")
+# Metashape processing parameters
+METASHAPE_DEFAULTS = PARAMS['processing']['metashape']['defaults']
+CHUNK_SIZE = PARAMS['processing']['chunk_size']
+USE_GPU = PARAMS['processing']['use_gpu']
+MAX_CHUNKS_PER_PSX = PARAMS['processing'].get('max_chunks_per_psx', 5)
 
 # Generate unique timestamp for this processing run
 TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 # Directory structure
 DIRECTORIES = {
-    # Root directories
+    "base": BASE_DIRECTORY,
     "data_root": DATA_DIRECTORY,
     "output_root": OUTPUT_DIRECTORY,
-    
-    # Input directories
     "frames": os.path.join(DATA_DIRECTORY, "frames"),
-    "edited_frames": os.path.join(DATA_DIRECTORY, "processed_frames"),
+    "reports": os.path.join(OUTPUT_DIRECTORY, "reports"),
     "psx_input": os.path.join(DATA_DIRECTORY, "psx_input"),
-    
-    # Output directories
-    "psx_output": os.path.join(OUTPUT_DIRECTORY, "psx"),
     "orthomosaics": os.path.join(OUTPUT_DIRECTORY, "orthomosaics"),
     "models": os.path.join(OUTPUT_DIRECTORY, "models"),
-    "reports": os.path.join(OUTPUT_DIRECTORY, "reports"),
-    "reports_initial": os.path.join(OUTPUT_DIRECTORY, "reports_initial")
+    "psx_output": PARAMS['directories'].get('psx_output', os.path.join(OUTPUT_DIRECTORY, "05_outputs/psx")),
+    "adobe_presets": PARAMS['directories'].get('adobe_presets', ''),
+    "metashape_presets": PARAMS['directories'].get('metashape_presets', ''),
+    "scripts": PARAMS['directories'].get('scripts', ''),
+    "final_outputs": PARAMS['directories'].get('final_outputs', os.path.join(OUTPUT_DIRECTORY, "final"))
 }
 
 # Configure logging
-LOG_LEVEL = "INFO"
-LOG_FILE = os.path.join(DIRECTORIES["reports"], f"processing_log_{TIMESTAMP}.txt")
-
-# Default Metashape processing settings
-METASHAPE_DEFAULTS = PARAMS['metashape']['defaults']
+LOG_FILE = os.path.join(DIRECTORIES["reports"], f"processing_{PROJECT_NAME}.log")
 
 def create_directories():
-    """Create all necessary directories for processing."""
-    # Create data directories
-    os.makedirs(DIRECTORIES["data_root"], exist_ok=True)
-    
-    data_dirs = ["frames", "edited_frames", "psx_input"]
-    for dir_name in data_dirs:
-        if dir_name in DIRECTORIES:
-            os.makedirs(DIRECTORIES[dir_name], exist_ok=True)
-    
-    # Create output directories
-    os.makedirs(DIRECTORIES["output_root"], exist_ok=True)
-    
-    output_dirs = ["psx_output", "orthomosaics", "models", "reports", "reports_initial"]
-    for dir_name in output_dirs:
-        if dir_name in DIRECTORIES:
-            os.makedirs(DIRECTORIES[dir_name], exist_ok=True)
+    """Create all required directories."""
+    for dir_path in DIRECTORIES.values():
+        if isinstance(dir_path, str) and not dir_path.startswith(('http://', 'https://')):  # Skip URLs and non-strings
+            os.makedirs(dir_path, exist_ok=True)
 
-def get_tracking_filename():
-    """Generate a unique tracking filename based on project name and timestamp."""
-    return f"{PROJECT_NAME}_{TIMESTAMP}_processing_status.txt"
+def get_tracking_files():
+    """Get list of all tracking files for this project."""
+    tracking_files = []
+    transects_dir = DIRECTORIES["frames"]
+    if os.path.exists(transects_dir):
+        for transect_dir in os.listdir(transects_dir):
+            if os.path.isdir(os.path.join(transects_dir, transect_dir)):
+                tracking_file = os.path.join(DIRECTORIES["data_root"], f"{transect_dir}_tracking.csv")
+                if os.path.exists(tracking_file):
+                    tracking_files.append(tracking_file)
+    return tracking_files
 
-def initialize_tracking():
-    """
-    Initialize a new tracking file with project metadata and empty transect list.
-    Returns the path to the tracking file.
-    """
-    # Create the directory for the tracking file if it doesn't exist
-    os.makedirs(DIRECTORIES["data_root"], exist_ok=True)
-    
-    # Generate unique filename
-    tracking_file = get_tracking_filename()
-    tracking_path = os.path.join(DIRECTORIES["data_root"], tracking_file)
-    
-    # Create initial tracking file with project metadata
-    with open(tracking_path, 'w') as f:
-        f.write(f"TCRMP 3D Processing Status Report\n")
-        f.write(f"================================\n\n")
-        f.write(f"Project: {PROJECT_NAME}\n")
-        f.write(f"Started: {TIMESTAMP}\n")
-        f.write(f"Video Source: {VIDEO_SOURCE_DIRECTORY}\n")
-        f.write(f"Data Directory: {DATA_DIRECTORY}\n")
-        f.write(f"Output Directory: {OUTPUT_DIRECTORY}\n")
-        f.write(f"Processing Quality: {PARAMS['metashape']['quality']}\n\n")
-        f.write("Project Notes:\n")
-        f.write(PROJECT_NOTES)
-        f.write("\nProcessing Parameters:\n")
-        f.write("--------------------\n")
-        f.write(f"Frames per transect: {FRAMES_PER_TRANSECT}\n")
-        f.write(f"Extraction rate: {EXTRACTION_RATE}\n")
-        f.write(f"Chunk size: {CHUNK_SIZE}\n")
-        f.write(f"GPU acceleration: {USE_GPU}\n")
-        f.write(f"Adobe presets: {USE_ADOBE_PRESETS}\n")
-        f.write("\nTransect Processing Status:\n")
-        f.write("-------------------------\n\n")
-    
-    return tracking_path
+def get_tracking_file(model_id):
+    """Get tracking file path for a specific model."""
+    return os.path.join(DIRECTORIES["data_root"], f"{model_id}_tracking.csv")
 
-def update_tracking(transect_id, updates):
-    """
-    Update the tracking file for a specific transect.
+def initialize_tracking(model_id):
+    """Initialize tracking CSV file for a model."""
+    tracking_file = get_tracking_file(model_id)
     
-    Args:
-        transect_id (str): The transect identifier
-        updates (dict): Dictionary of updates to make
-    """
-    tracking_path = os.path.join(DIRECTORIES["data_root"], get_tracking_filename())
+    if not os.path.exists(tracking_file):
+        with open(tracking_file, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(["Model ID", "Status", "Step 0 complete", "Step 1 complete", 
+                           "Step 1 start time", "Step 1 end time", "Step 1 processing time (s)", 
+                           "Aligned cameras", "Total cameras", "PSX file", "Report file",
+                           "Step 1 error time", "Notes"])
+            writer.writerow([model_id, "Initialized", "False", "False", "", "", "", 
+                           "", "", "", "", "", "Tracking initialized"])
     
-    # Read current content
-    with open(tracking_path, 'r') as f:
-        lines = f.readlines()
-    
-    # Find or create transect section
-    transect_section = f"\nTransect: {transect_id}\n"
-    transect_found = False
-    
-    for i, line in enumerate(lines):
-        if line.startswith(f"Transect: {transect_id}"):
-            transect_found = True
-            # Update existing transect section
-            for key, value in updates.items():
-                update_line = f"{key}: {value}\n"
-                # Look for existing line to update
-                for j in range(i+1, len(lines)):
-                    if lines[j].startswith(f"{key}:"):
-                        lines[j] = update_line
-                        break
-                else:
-                    # Add new line if not found
-                    lines.insert(i+1, update_line)
-            break
-    
-    if not transect_found:
-        # Add new transect section
-        lines.append(transect_section)
-        for key, value in updates.items():
-            lines.append(f"{key}: {value}\n")
-        lines.append("\n")
-    
-    # Write updated content
-    with open(tracking_path, 'w') as f:
-        f.writelines(lines)
+    return tracking_file
 
-def get_transect_status(transect_id):
-    """
-    Get the current status of a transect from the tracking file.
+def update_tracking(model_id, data):
+    """Update tracking file with new data."""
+    tracking_file = get_tracking_file(model_id)
     
-    Args:
-        transect_id (str): The transect identifier
+    if not os.path.exists(tracking_file):
+        tracking_file = initialize_tracking(model_id)
     
-    Returns:
-        dict: Dictionary of current status values
-    """
-    tracking_path = os.path.join(DIRECTORIES["data_root"], get_tracking_filename())
+    # Read existing data
+    rows = []
+    with open(tracking_file, 'r', newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        rows = list(reader)
     
-    if not os.path.exists(tracking_path):
+    if len(rows) < 2:
+        # Initialize with header and empty row if file is empty
+        rows = [
+            ["Model ID", "Status", "Step 0 complete", "Step 1 complete", 
+             "Step 1 start time", "Step 1 end time", "Step 1 processing time (s)", 
+             "Aligned cameras", "Total cameras", "PSX file", "Report file",
+             "Step 1 error time", "Notes"],
+            [model_id, "Initialized", "False", "False", "", "", "", 
+             "", "", "", "", "", ""]
+        ]
+    
+    # Update data in the second row (assuming header + one data row)
+    header = rows[0]
+    row = rows[1] if len(rows) > 1 else [""] * len(header)
+    
+    # Update values
+    for key, value in data.items():
+        try:
+            index = header.index(key)
+            row[index] = value
+        except ValueError:
+            # If key not in header, add it
+            header.append(key)
+            row.append(value)
+    
+    # Ensure model ID is set
+    try:
+        id_index = header.index("Model ID")
+        row[id_index] = model_id
+    except ValueError:
+        header.insert(0, "Model ID")
+        row.insert(0, model_id)
+    
+    # Write updated data
+    rows = [header, row]
+    with open(tracking_file, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerows(rows)
+    
+    return tracking_file
+
+def get_transect_status(model_id):
+    """Get the current status for a model."""
+    tracking_file = get_tracking_file(model_id)
+    
+    if not os.path.exists(tracking_file):
         return {}
     
-    status = {}
-    current_transect = None
+    with open(tracking_file, 'r', newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        rows = list(reader)
     
-    with open(tracking_path, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith(f"Transect: {transect_id}"):
-                current_transect = transect_id
-            elif current_transect == transect_id and line and not line.startswith("Transect:"):
-                if ":" in line:
-                    key, value = line.split(":", 1)
-                    status[key.strip()] = value.strip()
+    if len(rows) < 2:
+        return {}
+    
+    header = rows[0]
+    row = rows[1]
+    
+    status = {}
+    for i in range(len(header)):
+        if i < len(row):
+            status[header[i]] = row[i]
     
     return status
 
 # Create all directories on import
-create_directories()
-
-# Initialize tracking file
-TRACKING_FILE = initialize_tracking() 
+create_directories() 

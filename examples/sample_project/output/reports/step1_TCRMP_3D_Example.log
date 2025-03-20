@@ -1,0 +1,62 @@
+2025-03-19 20:31:29,594 - INFO - Found 2 transects to process
+2025-03-19 20:31:48,945 - ERROR - Error processing transect TCRMP20241014_3D_BWR_T2: No aligned cameras
+2025-03-19 20:32:07,634 - ERROR - Error processing transect TCRMP20241014_3D_BWR_T1: No aligned cameras
+2025-03-19 20:32:07,635 - INFO - Initial 3D processing complete
+2025-03-19 20:35:35,562 - INFO - Found 2 transects to process
+2025-03-19 20:35:35,972 - ERROR - Error processing transect TCRMP20241014_3D_BWR_T2: Can't replace file or directory: Is a directory (21): /Users/laurenkay/UVI Dropbox/Lauren Olinger/TCRMP_3D/3d/examples/sample_project
+2025-03-19 20:35:36,380 - ERROR - Error processing transect TCRMP20241014_3D_BWR_T1: Can't replace file or directory: Is a directory (21): /Users/laurenkay/UVI Dropbox/Lauren Olinger/TCRMP_3D/3d/examples/sample_project
+2025-03-19 20:35:36,380 - INFO - Initial 3D processing complete
+2025-03-19 20:36:13,205 - INFO - Found 2 transects to process
+2025-03-19 20:36:13,812 - INFO - Matching photos for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:36:31,702 - INFO - Aligning cameras for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:36:58,700 - INFO - Successfully aligned 98 out of 100 cameras
+2025-03-19 20:36:58,701 - INFO - Optimizing cameras for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:37:02,390 - INFO - Building dense cloud for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:37:02,390 - ERROR - Error processing transect TCRMP20241014_3D_BWR_T2: 'Metashape.Chunk' object has no attribute 'buildDenseCloud'
+2025-03-19 20:37:03,008 - INFO - Matching photos for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:37:21,943 - INFO - Aligning cameras for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:37:48,772 - INFO - Successfully aligned 98 out of 100 cameras
+2025-03-19 20:37:48,773 - INFO - Optimizing cameras for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:37:54,795 - INFO - Building dense cloud for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:37:54,795 - ERROR - Error processing transect TCRMP20241014_3D_BWR_T1: 'Metashape.Chunk' object has no attribute 'buildDenseCloud'
+2025-03-19 20:37:54,796 - INFO - Initial 3D processing complete
+2025-03-19 20:40:10,169 - INFO - Found 2 transects to process
+2025-03-19 20:40:10,789 - INFO - Matching photos for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:40:41,379 - INFO - Filtering points based on reconstruction uncertainty
+2025-03-19 20:40:41,395 - INFO - Optimizing cameras for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:40:41,797 - INFO - Filtering points based on reprojection error
+2025-03-19 20:40:41,801 - INFO - Filtering points based on projection accuracy
+2025-03-19 20:40:42,007 - INFO - Rotating coordinate system to bounding box
+2025-03-19 20:40:42,413 - INFO - Building depth maps for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:41:00,525 - INFO - Building model for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:41:13,368 - INFO - Smoothing model for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:41:13,983 - INFO - Building UV for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:41:39,420 - INFO - Building texture for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:42:04,454 - INFO - Found 2 transects to process
+2025-03-19 20:42:05,067 - INFO - Matching photos for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:42:33,434 - INFO - Filtering points based on reconstruction uncertainty
+2025-03-19 20:42:33,456 - INFO - Optimizing cameras for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:42:33,866 - INFO - Filtering points based on reprojection error
+2025-03-19 20:42:33,870 - INFO - Filtering points based on projection accuracy
+2025-03-19 20:42:34,076 - INFO - Rotating coordinate system to bounding box
+2025-03-19 20:42:34,487 - INFO - Building depth maps for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:42:48,693 - INFO - Building model for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:43:01,051 - INFO - Smoothing model for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:43:01,659 - INFO - Building UV for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:43:21,616 - INFO - Building texture for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:50:19,590 - INFO - Generating report for TCRMP20241014_3D_BWR_T2
+2025-03-19 20:50:39,269 - INFO - Successfully processed transect TCRMP20241014_3D_BWR_T2 in 514.8 seconds
+2025-03-19 20:50:39,888 - INFO - Matching photos for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:51:06,258 - INFO - Filtering points based on reconstruction uncertainty
+2025-03-19 20:51:06,273 - INFO - Optimizing cameras for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:51:06,677 - INFO - Filtering points based on reprojection error
+2025-03-19 20:51:06,680 - INFO - Filtering points based on projection accuracy
+2025-03-19 20:51:06,886 - INFO - Rotating coordinate system to bounding box
+2025-03-19 20:51:07,288 - INFO - Building depth maps for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:51:22,126 - INFO - Building model for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:51:33,258 - INFO - Smoothing model for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:51:33,669 - INFO - Building UV for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:51:51,574 - INFO - Building texture for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:57:47,001 - INFO - Generating report for TCRMP20241014_3D_BWR_T1
+2025-03-19 20:58:06,539 - INFO - Successfully processed transect TCRMP20241014_3D_BWR_T1 in 447.3 seconds
+2025-03-19 20:58:06,540 - INFO - Initial 3D processing complete
