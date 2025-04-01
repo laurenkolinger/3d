@@ -10,7 +10,7 @@ This project provides a set of Python scripts to automate the workflow of proces
 
 - Agisoft Metashape Pro (v2.1.1 or later)
 - Python 3.9+
-- Required Python packages (install with `pip install -r requirements.txt`):
+- Required Python packages (specific versions in `requirements.txt`):
   - PyYAML
   - pandas
   - numpy
@@ -34,44 +34,75 @@ TCRMP_3D/
 │   ├── step2.py             # Chunk management
 │   ├── step3.py             # Model processing and exports
 │   └── step4.py             # Final exports and web publishing
+├── install_metashape_deps.sh    # Script to install dependencies for Metashape (macOS/Linux)
+├── install_metashape_deps.bat   # Script to install dependencies for Metashape (Windows)
 └── README.md                # This file
 ```
 
 ## Initial Setup
 
-1. Clone this repository to your local machine:
-   ```bash
-   git clone https://github.com/yourusername/TCRMP_3D.git
-   cd TCRMP_3D
-   ```
+### 1. Repository Setup
 
-2. Create a Python virtual environment:
-   ```bash
-   python -m venv .venv
-   ```
+Clone this repository to your local machine:
+```bash
+git clone https://github.com/yourusername/TCRMP_3D.git
+cd TCRMP_3D
+```
 
-3. Activate the virtual environment:
-   - On Windows:
-     ```
-     .venv\Scripts\activate
-     ```
-   - On macOS/Linux:
-     ```
-     source .venv/bin/activate
-     ```
+### 2. Installing Dependencies
 
-4. Install required packages:
-   ```bash
-   pip install -r requirements.txt
-   ```
+The pipeline requires dependencies in two Python environments:
+1. Your local environment (for frame extraction - step0.py)
+2. Metashape's Python environment (for 3D processing - step1.py and beyond)
 
-5. Copy the sample project as a template for your own project:
-   ```bash
-   cp -r examples/sample_project my_new_project
-   cd my_new_project
-   ```
+#### Local Environment Setup
 
-6. Edit the `analysis_params.yaml` file in your project directory to configure the processing parameters.
+Create a Python virtual environment in your project:
+```bash
+# Navigate to your project directory
+cd examples/sample_project
+
+# Create virtual environment
+python -m venv .venv
+
+# Activate the virtual environment
+# On macOS/Linux:
+source .venv/bin/activate
+# On Windows:
+# .venv\Scripts\activate
+
+# Install requirements
+pip install -r ../../requirements.txt
+```
+
+#### Metashape Environment Setup (IMPORTANT)
+
+For steps that use Metashape (step1.py and beyond), you need to install dependencies in Metashape's Python environment. We provide scripts to simplify this process:
+
+**On macOS/Linux**:
+```bash
+# Make the script executable
+chmod +x ../../install_metashape_deps.sh
+
+# Run the installation script
+../../install_metashape_deps.sh
+```
+
+**On Windows**:
+```cmd
+..\..\install_metashape_deps.bat
+```
+
+These scripts will install the necessary packages directly in Metashape's Python environment.
+
+### 3. Project Configuration
+
+Copy the sample project as a template for your own project and edit the configuration:
+```bash
+cp -r examples/sample_project my_new_project
+cd my_new_project
+# Edit analysis_params.yaml to configure your project
+```
 
 ## Workflow Overview
 
@@ -113,12 +144,15 @@ This will:
 
 This step performs the initial 3D reconstruction using the extracted frames. It creates batched PSX files with multiple models grouped together for efficiency.
 
-```bash
-# For macOS users
-PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step1.py
+**Important**: Make sure you've installed the dependencies in Metashape's Python environment as explained in the setup section.
 
-# For Windows users
-set PYTHONPATH=.venv\Lib\site-packages
+**On macOS**:
+```bash
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step1.py
+```
+
+**On Windows**:
+```cmd
 "C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step1.py
 ```
 
@@ -150,12 +184,13 @@ After Step 1, manually check the quality of the generated models and make any ne
 
 This step consolidates chunks by site to prepare for final processing.
 
+**On macOS**:
 ```bash
-# For macOS users
-PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step2.py
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step2.py
+```
 
-# For Windows users
-set PYTHONPATH=.venv\Lib\site-packages
+**On Windows**:
+```cmd
 "C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step2.py
 ```
 
@@ -196,12 +231,13 @@ After Step 2, manually straighten and scale each model:
 
 This step adds scale bars (if coded targets are present), removes small components, builds and exports orthomosaics, textured models, and reports.
 
+**On macOS**:
 ```bash
-# For macOS users
-PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step3.py
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step3.py
+```
 
-# For Windows users
-set PYTHONPATH=.venv\Lib\site-packages
+**On Windows**:
+```cmd
 "C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step3.py
 ```
 
@@ -234,12 +270,13 @@ After Step 3, manually review and touch up the models:
 
 This step creates final high-resolution outputs and uploads decimated models to Sketchfab for web viewing.
 
+**On macOS**:
 ```bash
-# For macOS users
-PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step4.py
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step4.py
+```
 
-# For Windows users
-set PYTHONPATH=.venv\Lib\site-packages
+**On Windows**:
+```cmd
 "C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step4.py
 ```
 
@@ -272,6 +309,34 @@ Modify these files to adjust processing parameters to your needs.
 - **texture_size**: Texture size in pixels (default: 16384)
 
 See the configuration files for complete parameter descriptions.
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Package Import Errors in Metashape**
+   
+   If you encounter import errors for packages like numpy, pandas, or PyYAML when running scripts through Metashape, you'll need to install these packages in Metashape's Python environment. Use the provided installation scripts:
+   
+   ```bash
+   # On macOS/Linux
+   ./install_metashape_deps.sh
+   
+   # On Windows
+   install_metashape_deps.bat
+   ```
+
+2. **PSX files not generated**
+   
+   Ensure that the `psx_input` directory exists and is writable. Check the log file in the `reports` directory for error messages.
+
+3. **"Module 'numpy' has no attribute 'bool'"**
+   
+   This error typically occurs with incompatible numpy versions. Use our installation scripts to install the compatible version in Metashape's Python environment.
+
+4. **Metashape Python version mismatch**
+   
+   If your Metashape version uses a different Python version than 3.9, you may need to modify the installation scripts to point to the correct Python interpreter.
 
 ## Field Methods
 
@@ -411,87 +476,9 @@ Each pass should be approximately 10 meters long and take about 1 minute, mainta
 
 1. Clone this repository
 2. Navigate to the sample project directory: `cd examples/sample_project`
-3. Run each step in sequence, performing the manual steps between automated ones
-4. Check the output directories for results
-
-## Command Reference
-
-Complete set of commands for running the entire workflow:
-
-```bash
-# Create and activate virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On macOS/Linux
-# OR
-.venv\Scripts\activate     # On Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Step 0: Frame Extraction
-python ../../src/step0.py
-
-# Step 1: Initial 3D Processing
-# macOS
-PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step1.py
-# Windows
-set PYTHONPATH=.venv\Lib\site-packages
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step1.py
-
-# [MANUAL STEP: Quality Check & Alignment]
-
-# Step 2: Chunk Management
-# macOS
-PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step2.py
-# Windows
-set PYTHONPATH=.venv\Lib\site-packages
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step2.py
-
-# [MANUAL STEP: Straightening & Scaling]
-
-# Step 3: Model Processing and Exports
-# macOS
-PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step3.py
-# Windows
-set PYTHONPATH=.venv\Lib\site-packages
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step3.py
-
-# [MANUAL STEP: Model Review and Touchups]
-
-# Step 4: Final Exports and Web Publishing
-# macOS
-PYTHONPATH=.venv/lib/python3.12/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step4.py
-# Windows
-set PYTHONPATH=.venv\Lib\site-packages
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step4.py
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Missing PyYAML package in Metashape**
-   
-   Install PyYAML in Metashape's Python environment:
-   ```bash
-   /Applications/MetashapePro.app/Contents/Frameworks/Python.framework/Versions/3.9/bin/pip3 install pyyaml
-   ```
-   
-   On Windows:
-   ```bash
-   "C:\Program Files\Agisoft\Metashape Pro\python\python.exe" -m pip install pyyaml
-   ```
-
-2. **PSX files not generated**
-   
-   Ensure that the `psx_input` directory exists and is writable. Check the log file in the `reports` directory for error messages.
-
-3. **Missing pandas package**
-   
-   If using Metashape's Python, install pandas:
-   ```bash
-   /Applications/MetashapePro.app/Contents/Frameworks/Python.framework/Versions/3.9/bin/pip3 install pandas
-   ```
+3. Follow the setup instructions above
+4. Run each step in sequence, performing the manual steps between automated ones
+5. Check the output directories for results
 
 ## License
 
