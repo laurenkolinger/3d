@@ -9,12 +9,15 @@ This project provides a set of Python scripts to automate the workflow of proces
 ## Requirements
 
 - Agisoft Metashape Pro (v2.1.1 or later)
-- Python 3.9+
+- Python 3.12+ (for local environment)
+- Python 3.9 (for Metashape environment)
 - Required Python packages (specific versions in `requirements.txt`):
   - PyYAML
   - pandas
   - numpy
   - opencv-python
+  - matplotlib
+  - pillow
 
 ## Project Structure
 
@@ -24,17 +27,24 @@ TCRMP_3D/
 │   └── analysis_params.yaml # Base configuration template
 ├── examples/                # Example projects
 │   └── sample_project/      # Sample project with demo data
+│       ├── .venv/          # Local Python virtual environment
+│       ├── video_source/   # Input video files
+│       ├── frames/         # Extracted frames
+│       ├── psx_input/      # Initial Metashape project files
+│       ├── psx_output/     # Processed Metashape project files
+│       ├── reports/        # Processing logs and reports
+│       └── final_outputs/  # Final exports
 ├── presets/                 # Preset files for software
-│   ├── lightroom/           # Adobe Lightroom presets
-│   └── premiere/            # Adobe Premiere presets
+│   ├── lightroom/          # Adobe Lightroom presets
+│   └── premiere/           # Adobe Premiere presets
 ├── src/                     # Source code
-│   ├── config.py            # Configuration utilities
-│   ├── step0.py             # Frame extraction
-│   ├── step1.py             # Initial 3D processing
-│   ├── step2.py             # Chunk management
-│   ├── step3.py             # Model processing and exports
-│   └── step4.py             # Final exports and web publishing
-├── install_metashape_deps.sh    # Script to install dependencies for Metashape (macOS/Linux)
+│   ├── config.py           # Configuration utilities
+│   ├── step0.py            # Frame extraction
+│   ├── step1.py            # Initial 3D processing
+│   ├── step2.py            # Chunk management
+│   ├── step3.py            # Model processing and exports
+│   └── step4.py            # Final exports and web publishing
+├── install_metashape_deps.sh    # Script to install dependencies for Metashape (macOS)
 ├── install_metashape_deps.bat   # Script to install dependencies for Metashape (Windows)
 └── README.md                # This file
 ```
@@ -59,41 +69,38 @@ The pipeline requires dependencies in two Python environments:
 
 Create a Python virtual environment in your project:
 ```bash
-# Navigate to your project directory
-cd examples/sample_project
-
-# Create virtual environment
-python -m venv .venv
+# Create virtual environment in sample project directory
+python3 -m venv examples/sample_project/.venv
 
 # Activate the virtual environment
-# On macOS/Linux:
-source .venv/bin/activate
-# On Windows:
-# .venv\Scripts\activate
+source examples/sample_project/.venv/bin/activate
 
-# Install requirements
-pip install -r ../../requirements.txt
+# Install dependencies
+pip install -r requirements.txt
 ```
 
 #### Metashape Environment Setup (IMPORTANT)
 
 For steps that use Metashape (step1.py and beyond), you need to install dependencies in Metashape's Python environment. We provide scripts to simplify this process:
 
-**On macOS/Linux**:
+**On macOS**:
 ```bash
 # Make the script executable
-chmod +x ../../install_metashape_deps.sh
+chmod +x install_metashape_deps.sh
 
-# Run the installation script
-../../install_metashape_deps.sh
+# Run the installation script (requires sudo)
+./install_metashape_deps.sh
 ```
 
 **On Windows**:
 ```cmd
-..\..\install_metashape_deps.bat
+install_metashape_deps.bat
 ```
 
-These scripts will install the necessary packages directly in Metashape's Python environment.
+These scripts will:
+1. Download and install pip in Metashape's Python environment
+2. Install all required packages from requirements.txt
+3. Clean up temporary files
 
 ### 3. Project Configuration
 
@@ -125,12 +132,12 @@ This step extracts frames from video footage at a specified rate.
 
 ```bash
 # Activate the virtual environment first
-source .venv/bin/activate  # On macOS/Linux
+source examples/sample_project/.venv/bin/activate  # On macOS/Linux
 # or
-.venv\Scripts\activate     # On Windows
+examples\sample_project\.venv\Scripts\activate     # On Windows
 
 # Run step0.py
-python ../../src/step0.py
+python src/step0.py
 ```
 
 This will:
@@ -148,12 +155,12 @@ This step performs the initial 3D reconstruction using the extracted frames. It 
 
 **On macOS**:
 ```bash
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step1.py
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step1.py
 ```
 
 **On Windows**:
 ```cmd
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step1.py
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step1.py
 ```
 
 This will:
@@ -186,12 +193,12 @@ This step consolidates chunks by site to prepare for final processing.
 
 **On macOS**:
 ```bash
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step2.py
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py
 ```
 
 **On Windows**:
 ```cmd
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step2.py
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step2.py
 ```
 
 This will:
@@ -233,12 +240,12 @@ This step adds scale bars (if coded targets are present), removes small componen
 
 **On macOS**:
 ```bash
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step3.py
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3.py
 ```
 
 **On Windows**:
 ```cmd
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step3.py
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step3.py
 ```
 
 This will:
@@ -272,12 +279,12 @@ This step creates final high-resolution outputs and uploads decimated models to 
 
 **On macOS**:
 ```bash
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r ../../src/step4.py
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step4.py
 ```
 
 **On Windows**:
 ```cmd
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r ..\..\src\step4.py
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step4.py
 ```
 
 This will:
