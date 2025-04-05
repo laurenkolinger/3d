@@ -1,0 +1,6 @@
+# macOS system files
+.DS_Store
+**/.DS_Store
+
+# Sample project directory
+.sample_project/ 
