@@ -3,6 +3,7 @@
 # Path to Metashape's Python directory
 METASHAPE_PYTHON_DIR="/Applications/MetashapePro.app/Contents/Frameworks/Python.framework/Versions/3.9"
 METASHAPE_PYTHON="$METASHAPE_PYTHON_DIR/bin/python3.9"
+METASHAPE_SITE_PACKAGES="$METASHAPE_PYTHON_DIR/lib/python3.9/site-packages"
 
 # Check if Metashape Python exists
 if [ ! -f "$METASHAPE_PYTHON" ]; then
@@ -22,11 +23,11 @@ fi
 
 # Install pip
 echo "Installing pip..."
-sudo "$METASHAPE_PYTHON" get-pip.py
+sudo -H "$METASHAPE_PYTHON" get-pip.py
 
-# Install dependencies
+# Install dependencies directly to Metashape's site-packages
 echo "Installing dependencies..."
-sudo "$METASHAPE_PYTHON" -m pip install -r requirements.txt
+sudo -H "$METASHAPE_PYTHON" -m pip install --target="$METASHAPE_SITE_PACKAGES" -r requirements.txt
 
 # Clean up
 rm -f get-pip.py

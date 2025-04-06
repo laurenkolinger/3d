@@ -1,13 +1,18 @@
 """
-Step 1: Initial 3D Processing
+Step 1: Simplified 3D Processing
 
-This script performs the initial 3D reconstruction using Metashape,
-according to the configuration specified in analysis_params.yaml.
+A streamlined version of the initial 3D reconstruction script that focuses on essential
+processing steps while ensuring proper file saving.
 """
 
 import os
 import logging
 import Metashape
+import datetime
+import glob
+import math
+import pandas as pd
+import time
 from config import (
     DIRECTORIES,
     PROJECT_NAME,
@@ -15,21 +20,15 @@ from config import (
     USE_GPU,
     PARAMS,
     update_tracking,
-    get_transect_status,
-    get_tracking_files
+    get_transect_status
 )
-import datetime
-import glob
-import math
-import pandas as pd
-import time
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(os.path.join(DIRECTORIES["reports"], f"step1_{PROJECT_NAME}.log")),
+        logging.FileHandler(os.path.join(DIRECTORIES["reports"], f"step1_simplified_{PROJECT_NAME}.log")),
         logging.StreamHandler()
     ]
 )
@@ -39,7 +38,7 @@ MAX_CHUNKS_PER_PSX = PARAMS['processing'].get('max_chunks_per_psx', 5)
 
 def process_transect(transect_id, doc=None, psx_path=None):
     """
-    Process a single transect through initial 3D reconstruction.
+    Process a single transect through initial 3D reconstruction with minimal save points.
     
     Args:
         transect_id (str): The transect identifier
@@ -64,41 +63,35 @@ def process_transect(transect_id, doc=None, psx_path=None):
             
             # Set project path if not provided
             if psx_path is None:
-                # Create psx_input directory if it doesn't exist
                 os.makedirs(DIRECTORIES["psx_input"], exist_ok=True)
                 psx_path = os.path.join(DIRECTORIES["psx_input"], f"{transect_id}_step1.psx")
         
-        # Set up processing parameters
+        # Configure GPU if available
         if USE_GPU:
-            Metashape.app.gpu_mask = 1  # Use first GPU device (correct for Apple Silicon)
-            logging.info("GPU acceleration enabled for Apple Silicon")
+            Metashape.app.gpu_mask = 1  # Use first GPU
+            logging.info("GPU acceleration enabled")
         
         # Create new chunk
         chunk = doc.addChunk()
         chunk.label = transect_id
         
-        Metashape.app.update()
-
         # Add photos from frames directory
         frames_dir = os.path.join(DIRECTORIES["frames"], transect_id)
         if not os.path.exists(frames_dir):
             raise ValueError(f"Frames directory not found: {frames_dir}")
         
-        # Get list of frame files
         frame_files = [f for f in os.listdir(frames_dir) if f.endswith('.jpg')]
         if not frame_files:
             raise ValueError(f"No frame files found in {frames_dir}")
         
-        # Add photos to chunk
         logging.info(f"Adding {len(frame_files)} photos for model {transect_id}")
         chunk.addPhotos([os.path.join(frames_dir, f) for f in frame_files])
-        if psx_path:
-            doc.save(psx_path)
         
+        # Ensure the app state is updated before proceeding
         Metashape.app.update()
-
+        
         # Match photos and align cameras
-        logging.info(f"Matching photos for model {transect_id}")
+        logging.info(f"Matching and aligning photos for model {transect_id}")
         chunk.matchPhotos(
             downscale=METASHAPE_DEFAULTS["downscale"],
             keypoint_limit=METASHAPE_DEFAULTS["keypoint_limit"],
@@ -108,61 +101,41 @@ def process_transect(transect_id, doc=None, psx_path=None):
             filter_stationary_points=METASHAPE_DEFAULTS["filter_stationary_points"]
         )
         chunk.alignCameras(adaptive_fitting=METASHAPE_DEFAULTS["adaptive_fitting"])
-        if psx_path:
-            doc.save(psx_path)
         
-        Metashape.app.update()
-
-        # Select cameras that were not aligned initially
+        # Attempt to align any unaligned cameras
         unaligned_cameras = [camera for camera in chunk.cameras if not camera.transform]
-        
-        # Reset the alignment for the unaligned cameras
         for camera in unaligned_cameras:
             camera.transform = None
-
-
-        # Attempt to align the unaligned cameras
         chunk.alignCameras(cameras=unaligned_cameras, reset_alignment=False)
         
         # Reset the region
         chunk.resetRegion()
-        if psx_path:
-            doc.save(psx_path)
         
-        Metashape.app.update()
-        
-        # Filter points based on reconstruction uncertainty
-        logging.info("Filtering points based on reconstruction uncertainty")
+        # Filter points and optimize cameras in a single operation block
+        logging.info("Filtering points and optimizing cameras")
+        # Filter by reconstruction uncertainty
         f1 = Metashape.TiePoints.Filter()
         f1.init(chunk, Metashape.TiePoints.Filter.ReconstructionUncertainty)
         f1.removePoints(METASHAPE_DEFAULTS["reconstruction_uncertainty"])
         
         # Optimize cameras
-        logging.info(f"Optimizing cameras for model {transect_id}")
         chunk.optimizeCameras(
             fit_k4=METASHAPE_DEFAULTS["fit_k4"],
             adaptive_fitting=METASHAPE_DEFAULTS["adaptive_fitting"]
         )
         
-        # Filter points based on reprojection error
-        logging.info("Filtering points based on reprojection error")
+        # Filter by reprojection error
         f2 = Metashape.TiePoints.Filter()
         f2.init(chunk, Metashape.TiePoints.Filter.ReprojectionError)
         f2.removePoints(METASHAPE_DEFAULTS["reprojection_error"])
         
-        # Filter points based on projection accuracy
-        logging.info("Filtering points based on projection accuracy")
+        # Filter by projection accuracy
         f3 = Metashape.TiePoints.Filter()
         f3.init(chunk, Metashape.TiePoints.Filter.ProjectionAccuracy)
         f3.removePoints(METASHAPE_DEFAULTS["projection_accuracy"])
         
-        if psx_path:
-            doc.save(psx_path)
-        
-        Metashape.app.update()
-        
         # Rotate coordinate system to bounding box
-        logging.info("Rotating coordinate system to bounding box")
+        logging.info("Rotating coordinate system")
         R = chunk.region.rot     # Bounding box rotation matrix
         C = chunk.region.center  # Bounding box center vector
         
@@ -179,8 +152,6 @@ def process_transect(transect_id, doc=None, psx_path=None):
                              [     0,      0,      0,    1]])
                              
         chunk.transform.matrix = S * T.inv()  # resulting chunk transformation matrix
-        if psx_path:
-            doc.save(psx_path)
         
         Metashape.app.update()
         
@@ -190,70 +161,51 @@ def process_transect(transect_id, doc=None, psx_path=None):
             downscale=METASHAPE_DEFAULTS["depth_downscale"],
             filter_mode=getattr(Metashape, METASHAPE_DEFAULTS["depth_filter_mode"])
         )
-        if psx_path:
-            doc.save(psx_path)
         
         Metashape.app.update()
-
-        # Build model
+        
+        # Build model and texture in a single block
         logging.info(f"Building model for {transect_id}")
         chunk.buildModel(
             source_data=Metashape.DepthMapsData,
             surface_type=getattr(Metashape, METASHAPE_DEFAULTS["surface_type"]),
             face_count=getattr(Metashape, METASHAPE_DEFAULTS["face_count"]),
-            volumetric_masks=METASHAPE_DEFAULTS["volumetric_masks"],
             interpolation=getattr(Metashape, METASHAPE_DEFAULTS["interpolation"]),
             vertex_colors=METASHAPE_DEFAULTS["vertex_colors"]
         )
-        if psx_path:
-            doc.save(psx_path)
         
-        Metashape.app.update()
-
         # Smooth model
-        logging.info(f"Smoothing model for {transect_id}")
         chunk.smoothModel(
-            strength=METASHAPE_DEFAULTS["smooth_strength"],
-            apply_to_selection=False,
-            fix_borders=METASHAPE_DEFAULTS["fix_borders"],
-            preserve_edges=METASHAPE_DEFAULTS["preserve_edges"]
+            strength=METASHAPE_DEFAULTS["smooth_strength"]
         )
-        if psx_path:
-            doc.save(psx_path)
         
-        Metashape.app.update()
-
         # Build UV
-        logging.info(f"Building UV for model {transect_id}")
+        logging.info(f"Building UV and texture for model {transect_id}")
         chunk.buildUV(
             mapping_mode=getattr(Metashape, METASHAPE_DEFAULTS["mapping_mode"]),
-            texture_size=METASHAPE_DEFAULTS["texture_size"],
-            page_count=METASHAPE_DEFAULTS["page_count"]
+            texture_size=METASHAPE_DEFAULTS["texture_size"]
         )
-        if psx_path:
-            doc.save(psx_path)
         
-        Metashape.app.update()
-
         # Build texture
-        logging.info(f"Building texture for model {transect_id}")
         chunk.buildTexture(
             texture_size=METASHAPE_DEFAULTS["texture_size"],
             texture_type=getattr(Metashape.Model, METASHAPE_DEFAULTS["texture_type"]),
             blending_mode=getattr(Metashape, METASHAPE_DEFAULTS["blending_mode"]),
-            fill_holes=METASHAPE_DEFAULTS["fill_holes"],
-            ghosting_filter=METASHAPE_DEFAULTS["ghosting_filter"],
-            enable_gpu=METASHAPE_DEFAULTS["enable_gpu"],
-            relaxed_precision=METASHAPE_DEFAULTS["relaxed_precision"]
+            enable_gpu=METASHAPE_DEFAULTS["enable_gpu"]
         )
+        
+        # Ensure all processing changes are reflected in app state
+        Metashape.app.update()
+        time.sleep(1)  # Brief pause to ensure changes are registered
+        
+        # Save document with all completed processing
         if psx_path:
             doc.save(psx_path)
+            time.sleep(2)  # Allow sufficient time for save operation to complete
+            logging.info(f"Saved project to {psx_path}")
         
-        Metashape.app.update()
-
         # Generate report
-        logging.info(f"Generating report for model {transect_id}")
-        report_file_path = os.path.join(DIRECTORIES["reports"], f"{transect_id}_step1.pdf")
+        report_file_path = os.path.join(DIRECTORIES["reports"], f"{transect_id}_step1_simplified.pdf")
         chunk.exportReport(report_file_path, title=f"Model {transect_id} - Step 1 Report")
         
         end_time = datetime.datetime.now()
@@ -287,33 +239,9 @@ def process_transect(transect_id, doc=None, psx_path=None):
         })
         return (False, doc, None)
 
-def create_or_update_batch_summary(batch_mapping):
-    """
-    Create or update the batch summary CSV file.
-    
-    Args:
-        batch_mapping (dict): Mapping of PSX batch files to transects
-    """
-    summary_path = os.path.join(DIRECTORIES["data_root"], "psx_batch_summary.csv")
-    
-    # Create data for CSV
-    data = []
-    for psx_file, transects in batch_mapping.items():
-        for transect_id in transects:
-            data.append({
-                "PSX File": psx_file,
-                "Model ID": transect_id,
-                "Date Processed": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            })
-    
-    # Create DataFrame and save to CSV
-    df = pd.DataFrame(data)
-    df.to_csv(summary_path, index=False)
-    logging.info(f"Batch summary saved to {summary_path}")
-
 def main():
-    """Main function to process all models."""
-    # Get list of transect directories (which contain frames)
+    """Main function to process all models, simplified to minimize file operations."""
+    # Get list of transect directories with frames
     transect_dirs = []
     frames_dir = DIRECTORIES["frames"]
     if os.path.exists(frames_dir):
@@ -324,7 +252,7 @@ def main():
         logging.error(f"No model directories found in {frames_dir}")
         return
     
-    # Filter for transects that haven't been processed yet
+    # Filter for unprocessed transects
     unprocessed_transects = []
     for transect_id in transect_dirs:
         status = get_transect_status(transect_id)
@@ -337,52 +265,54 @@ def main():
     
     logging.info(f"Found {len(unprocessed_transects)} models to process")
     
-    # Process transects in batches
+    # Process transects in batches with simplified logic
     batch_mapping = {}  # Maps PSX files to contained transects
     current_batch = []
     current_doc = None
     current_psx_path = None
     
     timestamp = datetime.datetime.now().strftime("%Y%m%d")
-    
-    # Create first batch immediately instead of incrementing
-    batch_num = 1
+    batch_num = 1  # Start with batch 1
     
     for i, transect_id in enumerate(unprocessed_transects):
-        # If we're starting a new batch or the current batch is full
+        # Start a new batch if needed
         if not current_batch or len(current_batch) >= MAX_CHUNKS_PER_PSX:
-            # Save previous document if it exists
+            # Save previous batch completely before starting a new one
             if current_doc and current_psx_path:
                 try:
+                    # Ensure app state is updated before saving
+                    Metashape.app.update()
+                    time.sleep(1)  # Brief pause before save
                     current_doc.save(current_psx_path)
+                    time.sleep(2)  # Allow save to complete
                     logging.info(f"Saved batch to {current_psx_path}")
                 except Exception as e:
-                    logging.error(f"Error saving document to {current_psx_path}: {str(e)}")
-                # Only increment batch_num after the first batch
+                    logging.error(f"Error saving document: {str(e)}")
+                
+                # Only increment batch number after first batch is saved
                 batch_num += 1
             
-            # Create new batch
+            # Initialize new batch
             current_batch = []
-            
-            # Create new document for this batch
             current_doc = Metashape.Document()
             
-            # Create psx_input directory if it doesn't exist
+            # Ensure directory exists
             os.makedirs(DIRECTORIES["psx_input"], exist_ok=True)
             
-            # Generate PSX path for this batch
+            # Create PSX path for new batch
             current_psx_path = os.path.join(DIRECTORIES["psx_input"], f"psx_{batch_num}_{timestamp}.psx")
-            logging.info(f"Starting new batch {batch_num} with PSX file {current_psx_path}")
+            logging.info(f"Starting new batch {batch_num} in {current_psx_path}")
             
-            # Initialize the batch mapping for this PSX file
+            # Initialize batch mapping for this PSX file
             batch_mapping[current_psx_path] = []
             
-            # Save the empty document to establish the file
+            # Save empty document to establish the file
             try:
                 current_doc.save(current_psx_path)
+                time.sleep(1)  # Allow save to complete
                 logging.info(f"Created empty document at {current_psx_path}")
             except Exception as e:
-                logging.error(f"Error creating empty document at {current_psx_path}: {str(e)}")
+                logging.error(f"Error creating document: {str(e)}")
         
         # Add transect to current batch
         current_batch.append(transect_id)
@@ -391,39 +321,45 @@ def main():
         logging.info(f"Processing model {transect_id} ({i+1}/{len(unprocessed_transects)})")
         success, updated_doc, _ = process_transect(transect_id, current_doc, current_psx_path)
         
-        # Make sure we keep using the updated document reference
+        # Update document reference if needed
         if updated_doc is not None:
             current_doc = updated_doc
         
         if success:
             batch_mapping[current_psx_path].append(transect_id)
-            
-            # Save after each successful transect processing
-            try:
-                current_doc.save(current_psx_path)
-                logging.info(f"Saved progress to {current_psx_path} after processing {transect_id}")
-            except Exception as e:
-                logging.error(f"Error saving document to {current_psx_path}: {str(e)}")
     
     # Save final batch if it exists
     if current_doc and current_psx_path:
         try:
-            # Update app state before saving
+            # Final app state update
             Metashape.app.update()
-            # Let the update complete
-            time.sleep(1)
-            # Now save the document
+            time.sleep(1)  # Brief pause before save
+            
+            # Save the document with all completed processing
             current_doc.save(current_psx_path)
-            # Allow time for the save to complete
-            time.sleep(1)
+            time.sleep(3)  # Longer wait to ensure save completes
+            
             logging.info(f"Saved final batch to {current_psx_path}")
         except Exception as e:
-            logging.error(f"Error saving final document to {current_psx_path}: {str(e)}")
+            logging.error(f"Error saving final document: {str(e)}")
     
     # Create batch summary
-    create_or_update_batch_summary(batch_mapping)
+    summary_path = os.path.join(DIRECTORIES["data_root"], "psx_batch_summary.csv")
+    data = []
+    for psx_file, transects in batch_mapping.items():
+        for transect_id in transects:
+            data.append({
+                "PSX File": psx_file,
+                "Model ID": transect_id,
+                "Date Processed": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
     
-    logging.info("Step 1 processing complete")
+    # Save summary
+    df = pd.DataFrame(data)
+    df.to_csv(summary_path, index=False)
+    logging.info(f"Batch summary saved to {summary_path}")
+    
+    logging.info("Step 1 simplified processing complete")
 
 if __name__ == "__main__":
     main() 

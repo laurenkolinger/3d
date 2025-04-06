@@ -19,10 +19,8 @@ from config import (
     get_tracking_files
 )
 import datetime
-import glob
 import math
 import pandas as pd
-import time
 
 # Configure logging
 logging.basicConfig(
@@ -70,8 +68,8 @@ def process_transect(transect_id, doc=None, psx_path=None):
         
         # Set up processing parameters
         if USE_GPU:
-            Metashape.app.gpu_mask = 1  # Use first GPU device (correct for Apple Silicon)
-            logging.info("GPU acceleration enabled for Apple Silicon")
+            Metashape.app.gpu_mask = 1  # Use first GPU device
+            logging.info("GPU acceleration enabled")
         
         # Create new chunk
         chunk = doc.addChunk()
@@ -340,13 +338,11 @@ def main():
     # Process transects in batches
     batch_mapping = {}  # Maps PSX files to contained transects
     current_batch = []
+    batch_num = 1
     current_doc = None
     current_psx_path = None
     
     timestamp = datetime.datetime.now().strftime("%Y%m%d")
-    
-    # Create first batch immediately instead of incrementing
-    batch_num = 1
     
     for i, transect_id in enumerate(unprocessed_transects):
         # If we're starting a new batch or the current batch is full
@@ -354,14 +350,15 @@ def main():
             # Save previous document if it exists
             if current_doc and current_psx_path:
                 try:
+                    # Always update before saving
+                    Metashape.app.update()
+                    # Then save
                     current_doc.save(current_psx_path)
                     logging.info(f"Saved batch to {current_psx_path}")
                 except Exception as e:
                     logging.error(f"Error saving document to {current_psx_path}: {str(e)}")
-                # Only increment batch_num after the first batch
-                batch_num += 1
-            
-            # Create new batch
+                
+            # Start new batch
             current_batch = []
             
             # Create new document for this batch
@@ -371,7 +368,13 @@ def main():
             os.makedirs(DIRECTORIES["psx_input"], exist_ok=True)
             
             # Generate PSX path for this batch
-            current_psx_path = os.path.join(DIRECTORIES["psx_input"], f"psx_{batch_num}_{timestamp}.psx")
+            if batch_num == 1:
+                # Keep first batch as 1
+                current_psx_path = os.path.join(DIRECTORIES["psx_input"], f"psx_1_{timestamp}.psx")
+            else:
+                # Regular numbering for 2+
+                current_psx_path = os.path.join(DIRECTORIES["psx_input"], f"psx_{batch_num}_{timestamp}.psx")
+            
             logging.info(f"Starting new batch {batch_num} with PSX file {current_psx_path}")
             
             # Initialize the batch mapping for this PSX file
@@ -400,22 +403,25 @@ def main():
             
             # Save after each successful transect processing
             try:
+                # Always update before saving
+                Metashape.app.update()
+                # Then save
                 current_doc.save(current_psx_path)
                 logging.info(f"Saved progress to {current_psx_path} after processing {transect_id}")
             except Exception as e:
                 logging.error(f"Error saving document to {current_psx_path}: {str(e)}")
+        
+        # If this was the last transect in the batch, increment the batch number
+        if len(current_batch) >= MAX_CHUNKS_PER_PSX:
+            batch_num += 1
     
     # Save final batch if it exists
     if current_doc and current_psx_path:
         try:
-            # Update app state before saving
-            Metashape.app.update()
-            # Let the update complete
-            time.sleep(1)
-            # Now save the document
+            # Always update before saving
+            Metashape.app.update() 
+            # Then save
             current_doc.save(current_psx_path)
-            # Allow time for the save to complete
-            time.sleep(1)
             logging.info(f"Saved final batch to {current_psx_path}")
         except Exception as e:
             logging.error(f"Error saving final document to {current_psx_path}: {str(e)}")

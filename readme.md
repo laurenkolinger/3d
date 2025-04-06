@@ -9,8 +9,7 @@ This project provides a set of Python scripts to automate the workflow of proces
 ## Requirements
 
 - Agisoft Metashape Pro (v2.1.1 or later)
-- Python 3.12+ (for local environment)
-- Python 3.9 (for Metashape environment)
+- Python 3.9 (for both local environment and Metashape compatibility)
 - Required Python packages (specific versions in `requirements.txt`):
   - PyYAML
   - pandas
@@ -23,17 +22,6 @@ This project provides a set of Python scripts to automate the workflow of proces
 
 ```
 TCRMP_3D/
-├── config/                  # Configuration files
-│   └── analysis_params.yaml # Base configuration template
-├── examples/                # Example projects
-│   └── sample_project/      # Sample project with demo data
-│       ├── .venv/          # Local Python virtual environment
-│       ├── video_source/   # Input video files
-│       ├── frames/         # Extracted frames
-│       ├── psx_input/      # Initial Metashape project files
-│       ├── psx_output/     # Processed Metashape project files
-│       ├── reports/        # Processing logs and reports
-│       └── final_outputs/  # Final exports
 ├── presets/                 # Preset files for software
 │   ├── lightroom/          # Adobe Lightroom presets
 │   └── premiere/           # Adobe Premiere presets
@@ -45,7 +33,7 @@ TCRMP_3D/
 │   ├── step3.py            # Model processing and exports
 │   └── step4.py            # Final exports and web publishing
 ├── install_metashape_deps.sh    # Script to install dependencies for Metashape (macOS)
-├── install_metashape_deps.bat   # Script to install dependencies for Metashape (Windows)
+├── requirements.txt    # reqms
 └── README.md                # This file
 ```
 
@@ -59,7 +47,44 @@ git clone https://github.com/yourusername/TCRMP_3D.git
 cd TCRMP_3D
 ```
 
-### 2. Installing Dependencies
+### 2. Create Project Directory Structure
+
+Create all necessary directories for your project:
+```bash
+# From the workspace root, create the required directories
+mkdir -p examples/sample_project/{video_source,data,output}
+# final_outputs,psx_input,reports,frames,psx_output,models,orthomosaics}
+```
+
+This will create the following directory structure:
+```
+examples/sample_project/
+├── video_source/   # Input video files
+├── data/          # Data directory
+├── output/        # Output directory
+```
+
+Copy and configure the analysis parameters file:
+```bash
+# Copy the base configuration file to your project
+cp analysis_params.yaml examples/sample_project/
+
+# Edit the configuration file to match your project settings
+# The paths in the file should be relative to the workspace root
+# For example:
+#   video_source: "examples/sample_project/video_source"
+#   base: "examples/sample_project"
+#   data: "examples/sample_project/data"
+#   etc.
+```
+
+The configuration file (`analysis_params.yaml`) contains all the settings for your project. Make sure to:
+1. Keep all paths relative to the workspace root
+2. Update the project name and notes
+3. Verify that all directory paths match the structure you created
+4. Adjust any processing parameters as needed for your specific project
+
+### 3. Installing Dependencies
 
 The pipeline requires dependencies in two Python environments:
 1. Your local environment (for frame extraction - step0.py)
@@ -69,8 +94,8 @@ The pipeline requires dependencies in two Python environments:
 
 Create a Python virtual environment in your project:
 ```bash
-# Create virtual environment in sample project directory
-python3 -m venv examples/sample_project/.venv
+# Create virtual environment in sample project directory using Python 3.9
+python3.9 -m venv examples/sample_project/.venv
 
 # Activate the virtual environment
 source examples/sample_project/.venv/bin/activate
@@ -79,37 +104,42 @@ source examples/sample_project/.venv/bin/activate
 pip install -r requirements.txt
 ```
 
-#### Metashape Environment Setup (IMPORTANT)
+#### Running Metashape Scripts
 
-For steps that use Metashape (step1.py and beyond), you need to install dependencies in Metashape's Python environment. We provide scripts to simplify this process:
+To run Metashape scripts with the correct Python environment, you'll need to set the PYTHONPATH to point to your virtual environment's site-packages. This ensures Metashape uses the packages from your virtual environment while maintaining compatibility with Metashape's Python 3.9.
 
-**On macOS**:
+The general format for running Metashape scripts is:
 ```bash
-# Make the script executable
-chmod +x install_metashape_deps.sh
-
-# Run the installation script (requires sudo)
-./install_metashape_deps.sh
+# From the workspace root
+PYTHONPATH=examples/sample_project/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/stepX.py path/to/project
 ```
 
-**On Windows**:
-```cmd
-install_metashape_deps.bat
-```
+Where `stepX.py` is the specific step you want to run (step1.py, step2.py, etc.).
 
-These scripts will:
-1. Download and install pip in Metashape's Python environment
-2. Install all required packages from requirements.txt
-3. Clean up temporary files
+### 4. Project Configuration
 
-### 3. Project Configuration
+The sample project (`examples/sample_project`) is already configured with the necessary directory structure and settings. To use it:
 
-Copy the sample project as a template for your own project and edit the configuration:
-```bash
-cp -r examples/sample_project my_new_project
-cd my_new_project
-# Edit analysis_params.yaml to configure your project
-```
+1. **Verify Directory Structure**:
+   ```bash
+   # From the workspace root, check the sample project structure
+   ls -la examples/sample_project
+   ```
+   You should see:
+   - `.venv/` (Python virtual environment)
+   - `video_source/` (for input videos)
+   - `data/` 
+   - `output/`
+   - `analysis_params.yaml` (configuration file)
+
+2. **Configure Your Project**:
+   - Edit `examples/sample_project/analysis_params.yaml` to match your project settings
+   - Place your video files in `examples/sample_project/video_source/`
+   - All processing will happen within the project directory
+
+3. **Verify Environment Setup**:
+   - Local Python environment is set up in `examples/sample_project/.venv`
+   - All required directories exist in `examples/sample_project`
 
 ## Workflow Overview
 
@@ -124,6 +154,8 @@ The complete processing workflow consists of the following steps:
 7. **Manual Touchups**: Review and touch up models (manual step)
 8. **Final Exports & Web Publishing** (step4.py): Create final exports and upload to Sketchfab
 
+**Note:** Each script will prompt for the project directory containing the `analysis_params.yaml` file if not provided as a command-line argument. This allows processing different projects without code modifications, as source files will be linked to individual project directories dynamically for each run.
+
 ## Detailed Workflow
 
 ### Step 0: Frame Extraction
@@ -133,19 +165,19 @@ This step extracts frames from video footage at a specified rate.
 ```bash
 # Activate the virtual environment first
 source examples/sample_project/.venv/bin/activate  # On macOS/Linux
-# or
-examples\sample_project\.venv\Scripts\activate     # On Windows
 
-# Run step0.py
+# Run step0.py with project directory as argument
 python src/step0.py
+            
 ```
 
 This will:
-1. Scan the `video_source` directory for video files
-2. Create a subdirectory for each video in the `frames` directory
-3. Extract frames according to the settings in `analysis_params.yaml`
-4. Create a tracking CSV file for each model
-5. Generate a summary of extracted frames
+1. Load project configuration from the specified directory's `analysis_params.yaml` file
+2. Scan the `video_source` directory for video files
+3. Create a subdirectory for each video in the `frames` directory
+4. Extract frames according to the settings in `analysis_params.yaml`
+5. Create a tracking CSV file for each model
+6. Generate a summary of extracted frames
 
 ### Step 1: Initial 3D Processing
 
@@ -155,24 +187,25 @@ This step performs the initial 3D reconstruction using the extracted frames. It 
 
 **On macOS**:
 ```bash
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step1.py
-```
+# From the workspace root
+# Run with project directory as argument
+# THIS IS BROKEN: PYTHONPATH=examples/sample_project/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step1.py 
 
-**On Windows**:
-```cmd
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step1.py
+# OR  this worked 5 april
+PYTHONPATH=examples/sample_project/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step1_isolated.py
 ```
 
 This will:
-1. Find all model directories in the `frames` directory
-2. Group models into batches (maximum 5 models per batch by default)
-3. For each model:
+1. Load project configuration from the specified directory's `analysis_params.yaml` file
+2. Find all model directories in the `frames` directory
+3. Group models into batches (maximum 5 models per batch by default)
+4. For each model:
    - Add photos and align cameras
    - Filter points and optimize cameras
    - Build depth maps and create 3D model
    - Apply textures and generate report
-4. Save each batch as a separate PSX file in the `psx_input` directory
-5. Create a batch summary CSV file mapping models to PSX files
+5. Save each batch as a separate PSX file in the `psx_input` directory
+6. Create a batch summary CSV file mapping models to PSX files
 
 ### Manual Step: Quality Check & Alignment
 
@@ -193,19 +226,26 @@ This step consolidates chunks by site to prepare for final processing.
 
 **On macOS**:
 ```bash
+# Run with project directory as argument
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py /path/to/your/project/directory
+# OR run without arguments to be prompted for the project directory
 /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py
 ```
 
 **On Windows**:
 ```cmd
+:: Run with project directory as argument
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step2.py C:\path\to\your\project\directory
+:: OR run without arguments to be prompted for the project directory
 "C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step2.py
 ```
 
 This will:
-1. Read the tracking files to identify completed models
-2. Group models by site
-3. Create new PSX files organized by site in the `psx_output` directory
-4. Update tracking information for each model
+1. Load project configuration from the specified directory's `analysis_params.yaml` file 
+2. Read the tracking files to identify completed models
+3. Group models by site
+4. Create new PSX files organized by site in the `psx_output` directory
+5. Update tracking information for each model
 
 ### Manual Step: Straightening & Scaling
 
@@ -240,23 +280,30 @@ This step adds scale bars (if coded targets are present), removes small componen
 
 **On macOS**:
 ```bash
+# Run with project directory as argument
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3.py /path/to/your/project/directory
+# OR run without arguments to be prompted for the project directory
 /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3.py
 ```
 
 **On Windows**:
 ```cmd
+:: Run with project directory as argument
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step3.py C:\path\to\your\project\directory
+:: OR run without arguments to be prompted for the project directory
 "C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step3.py
 ```
 
 This will:
-1. Process each project in the `psx_output` directory
-2. For each model (chunk) in the project:
+1. Load project configuration from the specified directory's `analysis_params.yaml` file
+2. Process each project in the `psx_output` directory
+3. For each model (chunk) in the project:
    - Add scale bars if coded targets are present
    - Remove small disconnected components from the model
    - Build and export orthomosaic
    - Export textured model
    - Generate report
-3. Save exports to the appropriate directories
+4. Save exports to the appropriate directories
 
 ### Manual Step: Model Review and Touchups
 
@@ -279,23 +326,30 @@ This step creates final high-resolution outputs and uploads decimated models to 
 
 **On macOS**:
 ```bash
+# Run with project directory as argument
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step4.py /path/to/your/project/directory
+# OR run without arguments to be prompted for the project directory
 /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step4.py
 ```
 
 **On Windows**:
 ```cmd
+:: Run with project directory as argument
+"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step4.py C:\path\to\your\project\directory
+:: OR run without arguments to be prompted for the project directory
 "C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step4.py
 ```
 
 This will:
-1. For each model (chunk) in the project:
+1. Load project configuration from the specified directory's `analysis_params.yaml` file
+2. For each model (chunk) in the project:
    - Create a decimated copy for web viewing
    - Upload to Sketchfab (if API token is provided)
    - Export high-resolution orthomosaic
    - Export high-resolution textured model
    - Export point cloud
    - Generate comprehensive report
-2. Save all exports to the `final_outputs` directory
+3. Save all exports to the `final_outputs` directory
 
 ## Configuration
 
@@ -304,7 +358,20 @@ The processing pipeline is configured through YAML files:
 - Base configuration: `config/analysis_params.yaml`
 - Project-specific configuration: `examples/sample_project/analysis_params.yaml`
 
-Modify these files to adjust processing parameters to your needs.
+### Project Directory Approach
+
+Each script in the pipeline requires a project directory containing an `analysis_params.yaml` file. This design allows:
+
+1. Processing different projects without modifying code
+2. Running multiple projects in parallel
+3. Maintaining a clear separation between different datasets
+4. Dynamically linking source files to project-specific directories for each run
+
+You can specify the project directory:
+- As a command-line argument when running scripts
+- Or interactively when prompted by the script if no directory is provided
+
+The system will load all configurations from the `analysis_params.yaml` file in that directory, ensuring all paths and settings are specific to the current project.
 
 ### Key Configuration Parameters
 

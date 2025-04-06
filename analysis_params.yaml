@@ -8,23 +8,26 @@ project:
     Example project demonstrating the TCRMP 3D processing workflow.
     This is a template for setting up new projects.
 
+# Configuration file path - points to project-specific analysis_params.yaml
+config_path: "examples/sample_project/analysis_params.yaml"
+
 # Directory Configuration
 directories:
-  video_source: "video_source"  # Directory containing MP4/MOV files
-  base: "."                     # Current directory
-  data: "data"                  # Will be created in project directory
-  output: "output"              # Will be created in project directory
-  adobe_presets: "../../presets/lightroom"   # Adobe Lightroom presets
-  metashape_presets: "../../presets/premiere"  # Metashape presets
-  scripts: "../../src"          # Location of processing scripts
-  config: "../../src/config.py" # Location of config file
-  final_outputs: "output/final" # Location for final outputs
-  psx_input: "psx_input"        # Input PSX files
-  reports: "reports"            # Reports directory for PDF output
-  frames: "frames"              # Extracted frames directory
-  psx_output: "05_outputs/psx"  # Output PSX directory for final projects
-  models: "models"              # 3D model exports
-  orthomosaics: "orthomosaics"  # Orthomosaic exports
+  video_source: "examples/sample_project/video_source"  # Directory containing MP4/MOV files
+  base: "examples/sample_project"                       # Project base directory
+  data: "examples/sample_project/data"                  # Will be created in project directory
+  output: "examples/sample_project/output"              # Will be created in project directory
+  adobe_presets: "presets/lightroom"                    # Adobe Lightroom presets
+  metashape_presets: "presets/premiere"                 # Metashape presets
+  scripts: "src"                                        # Location of processing scripts
+  config: "src/config.py"                               # Location of config file
+  final_outputs: "examples/sample_project/final_outputs" # Location for final outputs
+  psx_input: "examples/sample_project/psx_input"         # Input PSX files
+  reports: "examples/sample_project/reports"             # Reports directory for PDF output
+  frames: "examples/sample_project/frames"               # Extracted frames directory
+  psx_output: "examples/sample_project/psx_output"       # Output PSX directory for final projects
+  models: "examples/sample_project/models"               # 3D model exports
+  orthomosaics: "examples/sample_project/orthomosaics"   # Orthomosaic exports
 
 # Processing Parameters
 processing:
@@ -35,7 +38,7 @@ processing:
   # Initial 3D Processing (step1.py)
   chunk_size: 400  # Maximum number of frames per chunk
   use_gpu: true    # Whether to use GPU for processing
-  max_chunks_per_psx: 5     # Maximum number of chunks per PSX file for batch processing
+  max_chunks_per_psx: 1     # Maximum number of chunks per PSX file for batch processing
   metashape:
     defaults:
       # Point filtering thresholds
@@ -46,7 +49,7 @@ processing:
       # Photo matching parameters
       keypoint_limit: 40000           # Maximum number of keypoints per image
       tiepoint_limit: 4000            # Maximum number of tie points per image pair
-      downscale: 1                    # Downscale factor for photos (1=highest quality, no downscaling)
+      downscale: 3                    # Downscale factor for photos (1=highest quality, no downscaling)
       generic_preselection: true      # Use image content for pre-selecting image pairs
       reference_preselection: true    # Use image metadata for pre-selecting image pairs  
       filter_stationary_points: false # Filter stationary points that don't contribute to the geometry
@@ -57,44 +60,44 @@ processing:
       
       # Depth map parameters
       depth_downscale: 4              # Downscale factor for depth maps (4=medium quality)
-      depth_filter_mode: "NoFiltering" # Depth map filtering mode: NoFiltering, MildFiltering, ModerateFiltering, AggressiveFiltering
+      depth_filter_mode: "AggressiveFiltering" # Depth map filtering mode: NoFiltering, MildFiltering, ModerateFiltering, AggressiveFiltering
       
       # Model building parameters
       surface_type: "Arbitrary"        # Surface type: Arbitrary (freeform) or HeightField (flat surface)
       interpolation: "EnabledInterpolation" # Interpolation mode: DisabledInterpolation, EnabledInterpolation, Extrapolated
-      face_count: "HighFaceCount"      # Target face count: LowFaceCount, MediumFaceCount, HighFaceCount, CustomFaceCount
+      face_count: "LowFaceCount"      # Target face count: LowFaceCount, MediumFaceCount, HighFaceCount, CustomFaceCount
       volumetric_masks: false          # Use volumetric masking
       vertex_colors: true              # Calculate vertex colors
       
       # Model smoothing
-      smooth_strength: 3               # Smoothing strength (1-10, higher=smoother)
+      smooth_strength: 1               # Smoothing strength (1-10, higher=smoother)
       fix_borders: true                # Fix model borders during smoothing
       preserve_edges: false            # Preserve sharp edges during smoothing
       
       # UV mapping
       mapping_mode: "GenericMapping"   # UV mapping mode: GenericMapping, OrthophotoMapping, AdaptiveOrthophotoMapping, SphericalMapping, CameraMapping
-      texture_size: 16384              # Texture size in pixels (power of 2)
-      page_count: 4                    # Number of texture pages
+      texture_size: 1024              # Texture size in pixels (power of 2) (16384)
+      page_count: 1                    # Number of texture pages (4)
       
       # Texture building
       texture_type: "DiffuseMap"       # Texture type: DiffuseMap, NormalMap, OcclusionMap
       blending_mode: "MosaicBlending"  # Blending mode: AverageBlending, MosaicBlending, MaxBlending, MinBlending, DisabledBlending
       fill_holes: true                 # Fill texture holes
       ghosting_filter: true            # Filter ghosting artifacts
-      enable_gpu: false                # Use GPU for texture generation
+      enable_gpu: true                # Use GPU for texture generation
       relaxed_precision: true          # Use relaxed precision for texture generation
   
   # Chunk Management (step2.py)
   chunk_management:
-    psx_startdir: "psx_input"         # Starting directory for PSX files
-    psx_finaldir: "05_outputs/psx"    # Final directory for PSX files
+    psx_startdir: "examples/sample_project/psx_input"         # Starting directory for PSX files
+    psx_finaldir: "examples/sample_project/psx_output"        # Final directory for PSX files
     chunk_quality:
-      min_cameras: 10                 # Minimum number of aligned cameras for a quality chunk
-      min_alignment_percentage: 90    # Minimum percentage of aligned cameras for a quality chunk
+      min_cameras: 0                 # Minimum number of aligned cameras for a quality chunk
+      min_alignment_percentage: 0    # Minimum percentage of aligned cameras for a quality chunk
   
   # Exports and Scale Bars (step3.py)
   model_processing:
-    has_coded_scales: false           # Whether the model has coded scale markers
+    has_coded_scales: true           # Whether the model has coded scale markers
     scale_bars:                       # Scale bar definitions if using coded markers
       - start_marker: "target 1000"   # First marker label
         end_marker: "target 1010"     # Second marker label
@@ -103,9 +106,9 @@ processing:
         end_marker: "target 1030"
         distance: 0.75
     model_cleanup:
-      min_faces: 100                 # Minimum faces for a component to be kept
-      min_vertices: 50               # Minimum vertices for a component to be kept
-      remove_small_components: true  # Whether to remove small disconnected components
+      min_faces: 0                 # Minimum faces for a component to be kept (100)
+      min_vertices: 0               # Minimum vertices for a component to be kept
+      remove_small_components: false  # Whether to remove small disconnected components (true)
     orthomosaic:
       resolution: 0.001              # Resolution in meters/pixel (1mm)
       blending_mode: "MosaicBlending" # Blending mode for orthomosaic

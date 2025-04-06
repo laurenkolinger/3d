@@ -44,7 +44,7 @@ def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate)
         extraction_rate (float): Rate at which to extract frames (1.0 = all frames)
     
     Returns:
-        int, list: Number of frames extracted and list of frame paths
+        tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
     """
     # Open video file
     cap = cv2.VideoCapture(video_path)
@@ -54,6 +54,9 @@ def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate)
     # Get video properties
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = cap.get(cv2.CAP_PROP_FPS)
+    
+    # Calculate video length in seconds
+    video_length_seconds = total_frames / fps if fps > 0 else 0
     
     # Calculate frame interval based on extraction rate
     frame_interval = int(1 / extraction_rate)
@@ -83,7 +86,7 @@ def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate)
             extracted_frame_paths.append(output_path)
     
     cap.release()
-    return frames_extracted, extracted_frame_paths
+    return frames_extracted, extracted_frame_paths, video_length_seconds, total_frames
 
 def process_video(video_path):
     """
@@ -115,7 +118,7 @@ def process_video(video_path):
         logging.info(f"Starting frame extraction for {video_name}")
         
         # Extract frames
-        frames_extracted, frame_paths = extract_frames(
+        frames_extracted, frame_paths, video_length, total_frames = extract_frames(
             video_path,
             output_dir,
             FRAMES_PER_TRANSECT,
@@ -124,20 +127,25 @@ def process_video(video_path):
         
         end_time = datetime.datetime.now()
         processing_time = (end_time - start_time).total_seconds()
+        extraction_timestamp = end_time.strftime("%Y-%m-%d %H:%M:%S")
         
         # Update tracking file
         update_tracking(video_name, {
             "Status": "Frames extracted",
-            "Frames extracted": str(frames_extracted),
             "Step 0 complete": "True",
+            "Video Length (s)": f"{video_length:.2f}",
+            "Total Video Frames": str(total_frames),
+            "Frames Extracted": str(frames_extracted),
+            "Video Source": video_path,
+            "Extraction Timestamp": extraction_timestamp,
             "Step 0 start time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
             "Step 0 end time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
             "Step 0 processing time (s)": str(processing_time),
             "Frames directory": output_dir,
-            "Notes": f"Extracted {frames_extracted} frames"
+            "Notes": f"Extracted {frames_extracted} frames from {total_frames} total frames ({video_length:.2f}s video)"
         })
         
-        logging.info(f"Successfully extracted {frames_extracted} frames from {video_name} in {processing_time:.1f} seconds")
+        logging.info(f"Successfully extracted {frames_extracted} frames from {video_name} (duration: {video_length:.2f}s) in {processing_time:.1f} seconds")
         return video_name, True
         
     except Exception as e:
@@ -155,11 +163,8 @@ def process_video(video_path):
 
 def create_frame_summary():
     """Create a summary of extracted frames for all transects."""
+    # Use data_root directory which user is expected to create
     summary_path = os.path.join(DIRECTORIES["data_root"], "frame_extraction_summary.csv")
-    
-    # Create output directories if they don't exist
-    for dir_path in [DIRECTORIES["data_root"], DIRECTORIES["reports"]]:
-        os.makedirs(dir_path, exist_ok=True)
     
     # Get all transect directories
     frames_dir = DIRECTORIES["frames"]
@@ -170,24 +175,27 @@ def create_frame_summary():
     
     # Write summary to CSV
     with open(summary_path, 'w') as f:
-        f.write("Transect ID,Frames Extracted,Extraction Date,Status\n")
+        f.write("Transect ID,Video Length (s),Total Frames,Frames Extracted,Extraction Date,Processing Time (s),Status\n")
         
         for transect_id in transect_dirs:
             status = get_transect_status(transect_id)
-            frames = status.get("Frames extracted", "0")
-            date = status.get("Step 0 end time", "")
+            frames = status.get("Frames Extracted", "0")
+            total_frames = status.get("Total Video Frames", "0")
+            video_length = status.get("Video Length (s)", "0")
+            date = status.get("Extraction Timestamp", status.get("Step 0 end time", ""))
+            processing_time = status.get("Step 0 processing time (s)", "0")
             complete = status.get("Step 0 complete", "False")
             
             status_text = "Complete" if complete == "True" else "Failed"
-            f.write(f"{transect_id},{frames},{date},{status_text}\n")
+            f.write(f"{transect_id},{video_length},{total_frames},{frames},{date},{processing_time},{status_text}\n")
     
     logging.info(f"Frame extraction summary saved to {summary_path}")
 
 def main():
     """Main function to process all videos in the source directory."""
-    # Create output directories if they don't exist
-    for dir_path in [DIRECTORIES["frames"], DIRECTORIES["reports"]]:
-        os.makedirs(dir_path, exist_ok=True)
+    # Create only needed subdirectories
+    os.makedirs(DIRECTORIES["frames"], exist_ok=True)
+    os.makedirs(DIRECTORIES["reports"], exist_ok=True)
     
     # Get list of video files
     video_files = []
