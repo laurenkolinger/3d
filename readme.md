@@ -95,10 +95,10 @@ The pipeline requires dependencies in two Python environments:
 Create a Python virtual environment in your project:
 ```bash
 # Create virtual environment in sample project directory using Python 3.9
-python3.9 -m venv examples/sample_project/.venv
+python3.9 -m venv examples/test/.venv
 
 # Activate the virtual environment
-source examples/sample_project/.venv/bin/activate
+source examples/test/.venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -111,7 +111,7 @@ To run Metashape scripts with the correct Python environment, you'll need to set
 The general format for running Metashape scripts is:
 ```bash
 # From the workspace root
-PYTHONPATH=examples/sample_project/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/stepX.py path/to/project
+PYTHONPATH=examples/test/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/stepX.py
 ```
 
 Where `stepX.py` is the specific step you want to run (step1.py, step2.py, etc.).
@@ -133,13 +133,13 @@ The sample project (`examples/sample_project`) is already configured with the ne
    - `analysis_params.yaml` (configuration file)
 
 2. **Configure Your Project**:
-   - Edit `examples/sample_project/analysis_params.yaml` to match your project settings
-   - Place your video files in `examples/sample_project/video_source/`
+   - Edit `examples/test/analysis_params.yaml` to match your project settings
+   - Place your video files in `examples/test/video_source/`
    - All processing will happen within the project directory
 
 3. **Verify Environment Setup**:
-   - Local Python environment is set up in `examples/sample_project/.venv`
-   - All required directories exist in `examples/sample_project`
+   - Local Python environment is set up in `examples/test/.venv`
+   - All required directories exist in `examples/test`
 
 ## Workflow Overview
 
@@ -164,7 +164,7 @@ This step extracts frames from video footage at a specified rate.
 
 ```bash
 # Activate the virtual environment first
-source examples/sample_project/.venv/bin/activate  # On macOS/Linux
+source examples/test/.venv/bin/activate  # On macOS/Linux
 
 # Run step0.py with project directory as argument
 python src/step0.py
