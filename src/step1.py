@@ -85,9 +85,9 @@ def process_transect(transect_id, doc=None, psx_path=None):
             raise ValueError(f"Frames directory not found: {frames_dir}")
         
         # Get list of frame files
-        frame_files = [f for f in os.listdir(frames_dir) if f.endswith('.jpg')]
+        frame_files = [f for f in os.listdir(frames_dir) if f.lower().endswith(('.jpg', '.jpeg', '.tif', '.tiff'))]
         if not frame_files:
-            raise ValueError(f"No frame files found in {frames_dir}")
+            raise ValueError(f"No image files found in {frames_dir}")
         
         # Add photos to chunk
         logging.info(f"Adding {len(frame_files)} photos for model {transect_id}")

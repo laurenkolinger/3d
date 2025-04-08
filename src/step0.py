@@ -11,6 +11,9 @@ import cv2
 import numpy as np
 from pathlib import Path
 import logging
+import subprocess
+import tempfile
+import shutil
 from config import (
     VIDEO_SOURCE_DIRECTORY,
     DIRECTORIES,
@@ -33,9 +36,440 @@ logging.basicConfig(
     ]
 )
 
+def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, extraction_rate):
+    """
+    Extract frames from a video file using FFmpeg with TIFF format (rgb24) and hardware acceleration.
+    
+    Args:
+        video_path (str): Path to the video file
+        output_dir (str): Directory to save frames
+        frames_per_transect (int): Number of frames to extract
+        extraction_rate (float): Rate at which to extract frames (1.0 = all frames)
+    
+    Returns:
+        tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
+    """
+    # Open video file with OpenCV just to get properties
+    logging.info(f"Opening video: {video_path}")
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video file: {video_path}")
+    
+    # Get video properties
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.release()
+    
+    # Calculate video length in seconds
+    video_length_seconds = total_frames / fps if fps > 0 else 0
+    
+    logging.info(f"Video properties: {width}x{height}, {fps} fps, {total_frames} frames, {video_length_seconds:.2f} seconds")
+    
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Calculate fps value for the extraction
+    if frames_per_transect > 0:
+        # Calculate the fps needed to get exactly frames_per_transect frames
+        extract_fps = frames_per_transect / video_length_seconds
+        logging.info(f"Setting fps={extract_fps} to extract {frames_per_transect} frames from {video_length_seconds:.2f}s video")
+    else:
+        # Use the specified extraction rate
+        extract_fps = fps * extraction_rate
+        logging.info(f"Setting fps={extract_fps} (extraction rate={extraction_rate})")
+    
+    # Extract frames using FFmpeg with TIFF format
+    logging.info(f"Extracting frames using TIFF format with rgb24")
+    print(f"Starting TIFF frame extraction from {os.path.basename(video_path)}")
+    
+    # Define output pattern for the frames
+    output_pattern = os.path.join(output_dir, f"frame_%06d.tiff")
+    
+    # FFmpeg command for TIFF extraction with hardware acceleration
+    ffmpeg_cmd = [
+        'ffmpeg',
+        '-hwaccel', 'videotoolbox',     # Hardware acceleration
+        '-hwaccel_output_format', 'videotoolbox_vld',  # Force hardware decoding
+        '-i', video_path,
+        '-vf', f'fps={extract_fps}',    # Set frames per second for extraction
+        '-c:v', 'tiff',                 # Use TIFF codec 
+        '-pix_fmt', 'rgb24',            # Standard 8-bit RGB
+        '-compression_level', '0',      # No compression
+        '-v', 'info',                   # Show information
+        '-stats',                       # Show progress
+        output_pattern
+    ]
+    
+    try:
+        # Run FFmpeg with output visible to user
+        print("Running FFmpeg with hardware acceleration for TIFF extraction...")
+        
+        process = subprocess.Popen(
+            ffmpeg_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            bufsize=1
+        )
+        
+        # Display FFmpeg output to monitor hardware acceleration
+        for line in process.stdout:
+            line = line.strip()
+            print(line)
+            # Look for hardware acceleration confirmation messages
+            if 'hwaccel' in line.lower() or 'videotoolbox' in line.lower():
+                print(f"HARDWARE ACCELERATION INDICATOR: {line}")
+        
+        process.wait()
+        
+        if process.returncode != 0:
+            raise subprocess.CalledProcessError(process.returncode, ffmpeg_cmd)
+        
+        # Get list of extracted frames
+        extracted_frame_paths = sorted([
+            os.path.join(output_dir, f) for f in os.listdir(output_dir) 
+            if f.endswith('.tiff')
+        ])
+        frames_extracted = len(extracted_frame_paths)
+        
+        # Check size of first frame
+        if frames_extracted > 0:
+            size_mb = os.path.getsize(extracted_frame_paths[0]) / (1024 * 1024)
+            print(f"First TIFF frame size: {size_mb:.2f} MB")
+        else:
+            print("No frames were extracted!")
+    
+    except subprocess.CalledProcessError as e:
+        error_msg = "Unknown FFmpeg error"
+        if hasattr(e, 'output') and e.output:
+            error_msg = e.output
+        elif hasattr(e, 'stderr') and e.stderr:
+            error_msg = e.stderr.decode()
+            
+        logging.error(f"FFmpeg error: {error_msg}")
+        print(f"ERROR: FFmpeg failed: {error_msg}")
+        
+        # Try simpler command without some options
+        print("Attempting simpler FFmpeg command...")
+        
+        # Simpler FFmpeg command without some options that might be causing problems
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-hwaccel', 'videotoolbox',
+            '-i', video_path,
+            '-vf', f'fps={extract_fps}',
+            '-pix_fmt', 'rgb24',
+            output_pattern
+        ]
+        
+        try:
+            subprocess.run(ffmpeg_cmd, check=True)
+            
+            # Get list of extracted frames
+            extracted_frame_paths = sorted([
+                os.path.join(output_dir, f) for f in os.listdir(output_dir) 
+                if f.endswith('.tiff')
+            ])
+            frames_extracted = len(extracted_frame_paths)
+            
+        except Exception as e2:
+            logging.error(f"Second FFmpeg attempt failed: {str(e2)}")
+            return 0, [], video_length_seconds, total_frames
+    
+    if frames_extracted == 0:
+        logging.error("No frames were extracted!")
+        print("ERROR: Failed to extract any frames")
+    else:
+        logging.info(f"Successfully extracted {frames_extracted} TIFF frames")
+        print(f"SUCCESS: Extracted {frames_extracted} TIFF frames to {output_dir}")
+    
+    return frames_extracted, extracted_frame_paths, video_length_seconds, total_frames
+
+def extract_frames_ffmpeg_alternative(video_path, output_dir, frames_per_transect, extraction_rate):
+    """
+    Alternative high-quality extraction method for cinema footage using EXR format.
+    
+    Args:
+        video_path (str): Path to the video file
+        output_dir (str): Directory to save frames
+        frames_per_transect (int): Number of frames to extract
+        extraction_rate (float): Rate at which to extract frames (1.0 = all frames)
+    
+    Returns:
+        tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
+    """
+    # Open video file with OpenCV just to get properties
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video file: {video_path}")
+    
+    # Get video properties
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.release()
+    
+    # Calculate video length in seconds
+    video_length_seconds = total_frames / fps if fps > 0 else 0
+    
+    # Calculate which frames to extract
+    if frames_per_transect > 0:
+        # Extract specific number of frames
+        frame_indices = np.linspace(0, total_frames-1, frames_per_transect, dtype=int)
+        logging.info(f"Will extract {frames_per_transect} frames evenly spaced throughout video")
+    else:
+        # Calculate frame interval based on extraction rate
+        frame_interval = int(1 / extraction_rate)
+        frame_indices = range(0, total_frames, frame_interval)
+        logging.info(f"Will extract frames at interval of {frame_interval} (rate={extraction_rate})")
+    
+    extracted_frame_paths = []
+    frames_extracted = 0
+    
+    print(f"Starting direct extraction of {len(frame_indices)} frames using individual frame method")
+    
+    # Try each format in order of preference until one works
+    formats_to_try = [
+        # ('.exr', ['-c:v', 'exr', '-pix_fmt', 'rgb48le']),  # EXR format (best for HDR)
+        # ('.tiff', ['-c:v', 'tiff', '-pix_fmt', 'rgb48']),   # 16-bit TIFF
+        ('.tiff', ['-c:v', 'tiff', '-pix_fmt', 'rgb24'])   # 8-bit TIFF
+        #('.png', ['-c:v', 'png', '-pix_fmt', 'rgb24', '-compression_level', '0'])  # PNG lossless
+    ]
+    
+    # Find which format works with this video
+    working_format = None
+    for ext, params in formats_to_try:
+        try:
+            test_output = os.path.join(output_dir, f"test_frame{ext}")
+            test_cmd = [
+                'ffmpeg',
+                '-hwaccel', 'videotoolbox',
+                '-ss', '0',
+                '-i', video_path,
+                '-vframes', '1'
+            ] + params + ['-y', test_output]
+            
+            subprocess.run(test_cmd, check=True, capture_output=True)
+            
+            if os.path.exists(test_output):
+                working_format = (ext, params)
+                os.remove(test_output)
+                break
+        except:
+            continue
+    
+    if not working_format:
+        logging.error("Could not find a working high-quality format for this video")
+        return 0, [], video_length_seconds, total_frames
+    
+    ext, params = working_format
+    print(f"Using format: {ext} with parameters: {params}")
+    
+    # Extract each frame using the working format
+    for i, frame_idx in enumerate(frame_indices):
+        if i % max(1, len(frame_indices) // 10) == 0:
+            progress = (i / len(frame_indices)) * 100
+            print(f"Extraction progress: {progress:.1f}% ({i}/{len(frame_indices)})")
+        
+        # Calculate timestamp for this frame
+        timestamp = frame_idx / fps if fps > 0 else 0
+        
+        # Output path
+        output_path = os.path.join(output_dir, f"frame_{frame_idx:06d}{ext}")
+        
+        # Extract this specific frame
+        frame_cmd = [
+            'ffmpeg',
+            '-hwaccel', 'videotoolbox',
+            '-ss', str(timestamp),
+            '-i', video_path,
+            '-vframes', '1'
+        ] + params + [
+            '-v', 'error',
+            output_path
+        ]
+        
+        try:
+            subprocess.run(frame_cmd, check=True, 
+                          stdout=subprocess.DEVNULL, 
+                          stderr=subprocess.PIPE)
+            
+            if os.path.exists(output_path):
+                extracted_frame_paths.append(output_path)
+                frames_extracted += 1
+                
+                # Check size of first frame
+                if frames_extracted == 1:
+                    size_mb = os.path.getsize(output_path) / (1024 * 1024)
+                    print(f"First frame size: {size_mb:.2f} MB using {ext} format")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Error extracting frame {frame_idx}: {e.stderr.decode() if hasattr(e, 'stderr') else str(e)}")
+    
+    return frames_extracted, extracted_frame_paths, video_length_seconds, total_frames
+
+def extract_frames_ffmpeg_png(video_path, output_dir, frames_per_transect, extraction_rate):
+    """
+    Extract frames from a video file using FFmpeg for highest quality as PNG (lossless).
+    
+    Args:
+        video_path (str): Path to the video file
+        output_dir (str): Directory to save frames
+        frames_per_transect (int): Number of frames to extract
+        extraction_rate (float): Rate at which to extract frames (1.0 = all frames)
+    
+    Returns:
+        tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
+    """
+    # Open video file with OpenCV just to get properties
+    logging.info(f"Opening video: {video_path}")
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video file: {video_path}")
+    
+    # Get video properties
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.release()
+    
+    # Calculate video length in seconds
+    video_length_seconds = total_frames / fps if fps > 0 else 0
+    
+    logging.info(f"Video properties: {width}x{height}, {fps} fps, {total_frames} frames, {video_length_seconds:.2f} seconds")
+    
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Calculate which frames to extract
+    if frames_per_transect > 0:
+        # Extract specific number of frames
+        frame_indices = np.linspace(0, total_frames-1, frames_per_transect, dtype=int)
+        logging.info(f"Will extract {frames_per_transect} PNG frames evenly spaced throughout video")
+    else:
+        # Calculate frame interval based on extraction rate
+        frame_interval = int(1 / extraction_rate)
+        frame_indices = range(0, total_frames, frame_interval)
+        logging.info(f"Will extract PNG frames at interval of {frame_interval} (rate={extraction_rate})")
+    
+    extracted_frame_paths = []
+    frames_extracted = 0
+    
+    print(f"Starting direct PNG extraction of {len(frame_indices)} frames...")
+    logging.info(f"Using direct PNG extraction method for highest quality")
+    
+    # Extract frames directly one by one (slower but better quality)
+    for i, frame_idx in enumerate(frame_indices):
+        if i % max(1, len(frame_indices) // 10) == 0:
+            progress = (i / len(frame_indices)) * 100
+            print(f"PNG extraction progress: {progress:.1f}% ({i}/{len(frame_indices)})")
+        
+        # Calculate exact timestamp for this frame
+        timestamp = frame_idx / fps if fps > 0 else 0
+        
+        # Output file path (PNG for lossless quality)
+        output_path = os.path.join(output_dir, f"frame_{frame_idx:06d}.png")
+        
+        # Extract just this one frame as PNG (lossless)
+        frame_cmd = [
+            'ffmpeg',
+            '-hwaccel', 'videotoolbox',
+            '-ss', str(timestamp),   # Seek to timestamp
+            '-i', video_path,
+            '-vframes', '1',         # Extract just one frame
+            '-pix_fmt', 'rgb24',     # Use RGB color space
+            '-vsync', '0',           # No frame rate conversion
+            '-vf', 'format=rgb24',   # Force RGB format
+            '-compression_level', '0', # No compression (max quality)
+            output_path
+        ]
+        
+        try:
+            # Run with minimal output to avoid clutter
+            subprocess.run(frame_cmd, check=True, 
+                          stdout=subprocess.DEVNULL, 
+                          stderr=subprocess.PIPE)
+            
+            if os.path.exists(output_path):
+                extracted_frame_paths.append(output_path)
+                frames_extracted += 1
+                
+                # Check size of first frame
+                if frames_extracted == 1:
+                    size_mb = os.path.getsize(output_path) / (1024 * 1024)
+                    print(f"First PNG frame size: {size_mb:.2f} MB")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Error extracting PNG frame {frame_idx}: {e.stderr.decode() if e.stderr else str(e)}")
+    
+    if frames_extracted == 0:
+        logging.error("No PNG frames were extracted!")
+        print("ERROR: Failed to extract any PNG frames")
+    else:
+        logging.info(f"Successfully extracted {frames_extracted} PNG frames")
+        print(f"SUCCESS: Extracted {frames_extracted} lossless PNG frames to {output_dir}")
+    
+    return frames_extracted, extracted_frame_paths, video_length_seconds, total_frames
+
+def extract_frames_png(video_path, output_dir, frames_per_transect, extraction_rate):
+    """
+    Extract frames as PNG files for lossless quality.
+    
+    Args:
+        video_path (str): Path to the video file
+        output_dir (str): Directory to save frames
+        frames_per_transect (int): Number of frames to extract
+        extraction_rate (float): Rate at which to extract frames (1.0 = all frames)
+    
+    Returns:
+        tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
+    """
+    # Open video file
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video file: {video_path}")
+    
+    # Get video properties
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    
+    # Calculate video length in seconds
+    video_length_seconds = total_frames / fps if fps > 0 else 0
+    
+    # Calculate which frames to extract
+    if frames_per_transect > 0:
+        # Extract specific number of frames
+        frame_indices = np.linspace(0, total_frames-1, frames_per_transect, dtype=int)
+    else:
+        # Calculate frame interval based on extraction rate
+        frame_interval = int(1 / extraction_rate)
+        frame_indices = range(0, total_frames, frame_interval)
+    
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Extract frames as PNG (lossless)
+    frames_extracted = 0
+    extracted_frame_paths = []
+    
+    for frame_idx in frame_indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ret, frame = cap.read()
+        if ret:
+            # Save as PNG for lossless quality
+            output_path = os.path.join(output_dir, f"frame_{frame_idx:06d}.png")
+            cv2.imwrite(output_path, frame)
+            frames_extracted += 1
+            extracted_frame_paths.append(output_path)
+    
+    cap.release()
+    return frames_extracted, extracted_frame_paths, video_length_seconds, total_frames
+
 def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate):
     """
-    Extract frames from a video file.
+    Extract frames from a video file using OpenCV (legacy method).
     
     Args:
         video_path (str): Path to the video file
@@ -81,7 +515,7 @@ def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate)
         ret, frame = cap.read()
         if ret:
             output_path = os.path.join(output_dir, f"frame_{frame_idx:06d}.jpg")
-            cv2.imwrite(output_path, frame)
+            cv2.imwrite(output_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 100])
             frames_extracted += 1
             extracted_frame_paths.append(output_path)
     
@@ -117,13 +551,21 @@ def process_video(video_path):
         start_time = datetime.datetime.now()
         logging.info(f"Starting frame extraction for {video_name}")
         
-        # Extract frames
-        frames_extracted, frame_paths, video_length, total_frames = extract_frames(
+        # For highest quality, use TIFF extraction method
+        frames_extracted, frame_paths, video_length, total_frames = extract_frames_ffmpeg(
             video_path,
             output_dir,
             FRAMES_PER_TRANSECT,
             EXTRACTION_RATE
         )
+        
+        # Method 2: Lossless PNG frames
+        # frames_extracted, frame_paths, video_length, total_frames = extract_frames_ffmpeg_png(
+        #     video_path,
+        #     output_dir, 
+        #     FRAMES_PER_TRANSECT,
+        #     EXTRACTION_RATE
+        # )
         
         end_time = datetime.datetime.now()
         processing_time = (end_time - start_time).total_seconds()
@@ -142,7 +584,7 @@ def process_video(video_path):
             "Step 0 end time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
             "Step 0 processing time (s)": str(processing_time),
             "Frames directory": output_dir,
-            "Notes": f"Extracted {frames_extracted} frames from {total_frames} total frames ({video_length:.2f}s video)"
+            "Notes": f"Extracted {frames_extracted} high quality frames from {total_frames} total frames ({video_length:.2f}s video)"
         })
         
         logging.info(f"Successfully extracted {frames_extracted} frames from {video_name} (duration: {video_length:.2f}s) in {processing_time:.1f} seconds")

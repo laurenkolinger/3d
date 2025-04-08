@@ -12,6 +12,7 @@ import datetime
 import math
 import pandas as pd
 import time
+import sys
 from config import (
     DIRECTORIES,
     PROJECT_NAME,
@@ -35,6 +36,69 @@ logging.basicConfig(
 # Maximum number of chunks per PSX file
 MAX_CHUNKS_PER_PSX = PARAMS['processing'].get('max_chunks_per_psx', 5)
 
+def enumerate_gpus():
+    """
+    Enumerate available GPUs and log their details.
+    
+    Returns:
+        list: List of available GPU devices
+    """
+    logging.info("Enumerating available GPU devices...")
+    gpu_devices = Metashape.app.enumGPUDevices()
+    
+    if not gpu_devices:
+        logging.warning("No GPU devices detected by Metashape")
+        return []
+        
+    for i, device in enumerate(gpu_devices):
+        if isinstance(device, dict):
+            device_info = []
+            for key, value in device.items():
+                device_info.append(f"{key}: {value}")
+            logging.info(f"GPU {i}: {', '.join(device_info)}")
+        else:
+            logging.info(f"GPU {i}: {device}")
+    
+    return gpu_devices
+
+def setup_gpu(gpu_devices=None):
+    """
+    Configure GPU processing based on available devices.
+    
+    Args:
+        gpu_devices (list, optional): List of available GPU devices
+        
+    Returns:
+        bool: Whether GPU processing was successfully enabled
+    """
+    if not USE_GPU:
+        logging.info("GPU processing disabled in config")
+        return False
+        
+    # Enumerate GPUs if not provided
+    if gpu_devices is None:
+        gpu_devices = enumerate_gpus()
+    
+    if not gpu_devices:
+        logging.warning("GPU processing requested but no devices available")
+        return False
+    
+    # Set GPU mask to enable all available GPUs
+    # Each bit in the mask corresponds to a GPU
+    gpu_mask = 0
+    for i in range(len(gpu_devices)):
+        gpu_mask |= (1 << i)  # Set the corresponding bit
+    
+    Metashape.app.gpu_mask = gpu_mask
+    
+    # Enable GPU for depth maps and mesh generation
+    Metashape.app.cpu_enable = False
+    
+    logging.info(f"GPU acceleration enabled with mask: {gpu_mask} (binary: {bin(gpu_mask)})")
+    logging.info(f"Using {len(gpu_devices)} GPU device(s)")
+    
+    return True
+
 def process_transect(transect_id, chunk, doc):
     """
     Process a single transect through initial 3D reconstruction.
@@ -50,10 +114,9 @@ def process_transect(transect_id, chunk, doc):
     try:
         start_time = datetime.datetime.now()
         
-        # Set up processing parameters
-        if USE_GPU:
-            Metashape.app.gpu_mask = 1  # Use first GPU device
-            logging.info("GPU acceleration enabled")
+        # Set up GPU processing
+        gpu_devices = enumerate_gpus()
+        gpu_enabled = setup_gpu(gpu_devices)
         
         # Set chunk label
         chunk.label = transect_id
@@ -64,9 +127,9 @@ def process_transect(transect_id, chunk, doc):
             raise ValueError(f"Frames directory not found: {frames_dir}")
         
         # Get list of frame files
-        frame_files = [f for f in os.listdir(frames_dir) if f.endswith('.jpg')]
+        frame_files = [f for f in os.listdir(frames_dir) if f.lower().endswith(('.jpg', '.jpeg', '.tif', '.tiff'))]
         if not frame_files:
-            raise ValueError(f"No frame files found in {frames_dir}")
+            raise ValueError(f"No image files found in {frames_dir}")
         
         # Add photos to chunk
         logging.info(f"Adding {len(frame_files)} photos for model {transect_id}")
@@ -135,7 +198,10 @@ def process_transect(transect_id, chunk, doc):
         logging.info(f"Building depth maps for model {transect_id}")
         chunk.buildDepthMaps(
             downscale=METASHAPE_DEFAULTS["depth_downscale"],
-            filter_mode=getattr(Metashape, METASHAPE_DEFAULTS["depth_filter_mode"])
+            filter_mode=getattr(Metashape, METASHAPE_DEFAULTS["depth_filter_mode"]),
+            reuse_depth=False,
+            max_neighbors=METASHAPE_DEFAULTS.get("max_neighbors", 16),
+            subdivide_task=True  # Split into subtasks for better GPU utilization
         )
         
         # Build model
@@ -145,18 +211,25 @@ def process_transect(transect_id, chunk, doc):
             surface_type=getattr(Metashape, METASHAPE_DEFAULTS["surface_type"]),
             face_count=getattr(Metashape, METASHAPE_DEFAULTS["face_count"]),
             interpolation=getattr(Metashape, METASHAPE_DEFAULTS["interpolation"]),
-            vertex_colors=METASHAPE_DEFAULTS["vertex_colors"]
+            vertex_colors=METASHAPE_DEFAULTS["vertex_colors"],
+            subdivide_task=True  # Split into subtasks for better GPU utilization
         )
         
         # Smooth model
         logging.info(f"Smoothing model for {transect_id}")
-        chunk.smoothModel(strength=METASHAPE_DEFAULTS["smooth_strength"])
+        chunk.smoothModel(
+            strength=METASHAPE_DEFAULTS["smooth_strength"],
+            apply_to_selection=False,
+            fix_borders=METASHAPE_DEFAULTS.get("fix_borders", False),
+            preserve_edges=METASHAPE_DEFAULTS.get("preserve_edges", False)
+        )
         
         # Build UV
         logging.info(f"Building UV for model {transect_id}")
         chunk.buildUV(
             mapping_mode=getattr(Metashape, METASHAPE_DEFAULTS["mapping_mode"]),
-            texture_size=METASHAPE_DEFAULTS["texture_size"]
+            texture_size=METASHAPE_DEFAULTS["texture_size"],
+            page_count=METASHAPE_DEFAULTS.get("page_count", 1)
         )
         
         # Build texture
@@ -165,7 +238,9 @@ def process_transect(transect_id, chunk, doc):
             texture_size=METASHAPE_DEFAULTS["texture_size"],
             texture_type=getattr(Metashape.Model, METASHAPE_DEFAULTS["texture_type"]),
             blending_mode=getattr(Metashape, METASHAPE_DEFAULTS["blending_mode"]),
-            enable_gpu=METASHAPE_DEFAULTS["enable_gpu"]
+            enable_gpu=True,  # Force GPU usage for texture generation
+            ghosting_filter=METASHAPE_DEFAULTS.get("ghosting_filter", True),
+            fill_holes=METASHAPE_DEFAULTS.get("fill_holes", True)
         )
         
         end_time = datetime.datetime.now()
