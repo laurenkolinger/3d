@@ -13,6 +13,7 @@ import math
 import pandas as pd
 import time
 import sys
+import traceback
 from config import (
     DIRECTORIES,
     PROJECT_NAME,
@@ -22,6 +23,32 @@ from config import (
     update_tracking,
     get_transect_status
 )
+
+# Print all directory paths for debugging
+print("DEBUG: Directory paths:")
+for key, path in DIRECTORIES.items():
+    print(f"  {key}: {path}")
+    # Check if directory exists
+    if os.path.exists(path):
+        print(f"    [EXISTS]")
+    else:
+        print(f"    [DOES NOT EXIST]")
+        try:
+            os.makedirs(path, exist_ok=True)
+            print(f"    [CREATED]")
+        except Exception as e:
+            print(f"    [FAILED TO CREATE: {str(e)}]")
+
+# Try to create each directory explicitly
+print("DEBUG: Attempting to create all directories:")
+for key, path in DIRECTORIES.items():
+    try:
+        print(f"Creating directory: {path}")
+        os.makedirs(path, exist_ok=True)
+        print(f"  Success!")
+    except Exception as e:
+        print(f"  Error creating {path}: {str(e)}")
+        traceback.print_exc()
 
 # Configure logging
 logging.basicConfig(
@@ -147,6 +174,10 @@ def process_transect(transect_id, chunk, doc):
         )
         chunk.alignCameras(adaptive_fitting=METASHAPE_DEFAULTS["adaptive_fitting"])
         
+        # Save after photo alignment
+        logging.info(f"Saving progress after alignment for model {transect_id}")
+        doc.save()
+        
         # Attempt to align any unaligned cameras
         unaligned_cameras = [camera for camera in chunk.cameras if not camera.transform]
         for camera in unaligned_cameras:
@@ -174,6 +205,10 @@ def process_transect(transect_id, chunk, doc):
         f3 = Metashape.TiePoints.Filter()
         f3.init(chunk, Metashape.TiePoints.Filter.ProjectionAccuracy)
         f3.removePoints(METASHAPE_DEFAULTS["projection_accuracy"])
+        
+        # Save after point filtering
+        logging.info(f"Saving progress after point filtering for model {transect_id}")
+        doc.save()
         
         # Rotate coordinate system to bounding box
         logging.info("Rotating coordinate system to bounding box")
@@ -203,6 +238,10 @@ def process_transect(transect_id, chunk, doc):
             max_neighbors=METASHAPE_DEFAULTS.get("max_neighbors", 16),
             subdivide_task=True  # Split into subtasks for better GPU utilization
         )
+        
+        # Save after depth maps
+        logging.info(f"Saving progress after depth maps for model {transect_id}")
+        doc.save()
         
         # Build model
         logging.info(f"Building model for {transect_id}")
@@ -289,7 +328,14 @@ def process_batch(transects, batch_num, timestamp):
     
     # Create PSX path for this batch
     os.makedirs(DIRECTORIES["psx_input"], exist_ok=True)
-    psx_path = os.path.join(DIRECTORIES["psx_input"], f"psx_{batch_num}_{timestamp}.psx")
+    
+    # Use transect name as filename if only 1 transect per PSX
+    if len(transects) == 1 and MAX_CHUNKS_PER_PSX == 1:
+        psx_filename = f"{transects[0]}_{timestamp}.psx"
+    else:
+        psx_filename = f"psx_{batch_num}_{timestamp}.psx"
+    
+    psx_path = os.path.join(DIRECTORIES["psx_input"], psx_filename)
     logging.info(f"Processing batch {batch_num} with {len(transects)} transects to {psx_path}")
     
     # Create a new document for this batch

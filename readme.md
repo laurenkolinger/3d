@@ -192,7 +192,7 @@ This step performs the initial 3D reconstruction using the extracted frames. It 
 # THIS IS BROKEN: PYTHONPATH=examples/sample_project/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step1.py 
 
 # OR  this worked 5 april
-PYTHONPATH=examples/sample_project/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step1_isolated.py
+PYTHONPATH=examples/test/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step1_isolated.py
 ```
 
 This will:
