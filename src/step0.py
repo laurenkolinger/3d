@@ -15,7 +15,6 @@ from config import (
     VIDEO_SOURCE_DIRECTORY,
     DIRECTORIES,
     FRAMES_PER_TRANSECT,
-    EXTRACTION_RATE,
     PROJECT_NAME,
     update_tracking,
     get_transect_status,
@@ -33,7 +32,7 @@ logging.basicConfig(
     ]
 )
 
-def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate):
+def extract_frames(video_path, output_dir, frames_per_transect):
     """
     Extract frames from a video file.
     
@@ -41,7 +40,6 @@ def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate)
         video_path (str): Path to the video file
         output_dir (str): Directory to save frames
         frames_per_transect (int): Number of frames to extract
-        extraction_rate (float): Rate at which to extract frames (1.0 = all frames)
     
     Returns:
         tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
@@ -58,16 +56,14 @@ def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate)
     # Calculate video length in seconds
     video_length_seconds = total_frames / fps if fps > 0 else 0
     
-    # Calculate frame interval based on extraction rate
-    frame_interval = int(1 / extraction_rate)
-    
-    # Calculate which frames to extract
-    if frames_per_transect > 0:
-        # Extract specific number of frames
-        frame_indices = np.linspace(0, total_frames-1, frames_per_transect, dtype=int)
+    if frames_per_transect <= 0:
+        raise ValueError(f"frames_per_transect must be greater than 0. Found {frames_per_transect}")
+        
+    if frames_per_transect > total_frames:
+        logging.warning(f"Requested {frames_per_transect} frames, but video only has {total_frames} frames. Extracting all frames.")
+        frame_indices = np.arange(total_frames)
     else:
-        # Extract frames at specified interval
-        frame_indices = range(0, total_frames, frame_interval)
+        frame_indices = np.linspace(0, total_frames - 1, frames_per_transect, dtype=int)
     
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
@@ -121,8 +117,7 @@ def process_video(video_path):
         frames_extracted, frame_paths, video_length, total_frames = extract_frames(
             video_path,
             output_dir,
-            FRAMES_PER_TRANSECT,
-            EXTRACTION_RATE
+            FRAMES_PER_TRANSECT
         )
         
         end_time = datetime.datetime.now()
@@ -161,36 +156,6 @@ def process_video(video_path):
         })
         return video_name, False
 
-def create_frame_summary():
-    """Create a summary of extracted frames for all transects."""
-    # Use data_root directory which user is expected to create
-    summary_path = os.path.join(DIRECTORIES["data_root"], "frame_extraction_summary.csv")
-    
-    # Get all transect directories
-    frames_dir = DIRECTORIES["frames"]
-    transect_dirs = []
-    if os.path.exists(frames_dir):
-        transect_dirs = [d for d in os.listdir(frames_dir) 
-                        if os.path.isdir(os.path.join(frames_dir, d))]
-    
-    # Write summary to CSV
-    with open(summary_path, 'w') as f:
-        f.write("Transect ID,Video Length (s),Total Frames,Frames Extracted,Extraction Date,Processing Time (s),Status\n")
-        
-        for transect_id in transect_dirs:
-            status = get_transect_status(transect_id)
-            frames = status.get("Frames Extracted", "0")
-            total_frames = status.get("Total Video Frames", "0")
-            video_length = status.get("Video Length (s)", "0")
-            date = status.get("Extraction Timestamp", status.get("Step 0 end time", ""))
-            processing_time = status.get("Step 0 processing time (s)", "0")
-            complete = status.get("Step 0 complete", "False")
-            
-            status_text = "Complete" if complete == "True" else "Failed"
-            f.write(f"{transect_id},{video_length},{total_frames},{frames},{date},{processing_time},{status_text}\n")
-    
-    logging.info(f"Frame extraction summary saved to {summary_path}")
-
 def main():
     """Main function to process all videos in the source directory."""
     # Create only needed subdirectories
@@ -216,7 +181,7 @@ def main():
         results.append((transect_id, success))
     
     # Create summary of results
-    create_frame_summary()
+    # create_frame_summary() # Removed this call
     
     # Report final status
     successful = sum(1 for _, success in results if success)

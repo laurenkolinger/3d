@@ -163,8 +163,6 @@ The complete processing workflow consists of the following steps:
 This step extracts frames from video footage at a specified rate.
 
 ```bash
-# Activate the virtual environment first
-source examples/sample_project/.venv/bin/activate  # On macOS/Linux
 
 # Run step0.py with project directory as argument
 python src/step0.py

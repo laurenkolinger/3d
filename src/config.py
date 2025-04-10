@@ -60,9 +60,11 @@ def get_yaml_path():
     
     # Prompt user for project directory
     print("Please enter the absolute path to your project directory containing analysis_params.yaml")
-    print("Example: /Users/yourname/examples/sample_project/")
-    print("(Do not include quotes around the path)")
+    print("Example: /Users/yourname/examples/sample_project/ or '/Users/yourname/examples/sample_project'")
     project_dir = input("Project directory: ").strip()
+    
+    # Remove potential surrounding single or double quotes
+    project_dir = project_dir.strip('\'"')
     
     # Remove any trailing slashes
     project_dir = project_dir.rstrip('/')
@@ -105,9 +107,6 @@ OUTPUT_DIRECTORY = PARAMS['directories'].get('output', 'output')
 
 # Number of frames to extract per transect
 FRAMES_PER_TRANSECT = PARAMS['processing']['frames_per_transect']
-
-# Frame extraction rate
-EXTRACTION_RATE = PARAMS['processing']['extraction_rate']
 
 # Project metadata - derive name from directory if not specified
 PROJECT_NAME = PARAMS['project'].get('name')
@@ -169,6 +168,10 @@ def create_directories():
             
         # Only create directories within data and output folders
         # or if they are the data and output folders themselves
+        # Exclude specific directories like psx_output and final_outputs early on
+        if dir_name in ["psx_output", "final_outputs"]:
+            continue
+            
         if (dir_name in ["data_root", "output_root"] or
             dir_path.startswith(DIRECTORIES["data_root"]) or
             dir_path.startswith(DIRECTORIES["output_root"])):
