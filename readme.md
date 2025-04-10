@@ -1,6 +1,6 @@
-# TCRMP 3D Processing Pipeline
+# 3D Processing Pipeline
 
-A comprehensive workflow for processing 3D coral reef models from video footage.
+A comprehensive workflow for processing 3D models from video footage.
 
 ## Overview
 
@@ -17,16 +17,16 @@ This project provides a set of Python scripts to automate the workflow of proces
   - opencv-python
   - matplotlib
   - pillow
+- **Note:** This pipeline has been developed and tested primarily on macOS. Compatibility and performance on Windows or Linux are not guaranteed.
 
 ## Project Structure
 
 ```
-3d/
+./
 ├── analysis_params.yaml       # Base analysis parameters (copy to project dir)
 ├── docs/                      # Documentation files
 ├── examples/                  # Example project directories
 ├── images/                    # Supporting images (e.g., for README)
-├── install_metashape_deps.sh  # Script to install Metashape Python dependencies (macOS)
 ├── presets/                   # Preset files for software (Lightroom, Premiere)
 ├── src/                       # Source code
 │   ├── config.py             # Configuration loading utilities
@@ -38,9 +38,7 @@ This project provides a set of Python scripts to automate the workflow of proces
 │   ├── step3.py              # Model Processing and Exports
 │   └── step4.py              # Final Exports and Web Publishing
 ├── .gitignore                 # Specifies intentionally untracked files that Git should ignore
-├── LICENSE                    # Project license file (assuming MIT based on later section)
-├── metashape_python_api_2_1_1.pdf # Metashape Python API documentation
-├── readme.md                  # This file
+├── README.md                  # This file
 └── requirements.txt           # Python package requirements
 ```
 
@@ -50,8 +48,8 @@ This project provides a set of Python scripts to automate the workflow of proces
 
 Clone this repository to your local machine:
 ```bash
-git clone https://github.com/yourusername/TCRMP_3D.git
-cd TCRMP_3D
+git clone https://github.com/laurenkolinger/3d.git
+cd 3d
 ```
 
 ### 2. Create Project Directory Structure
@@ -60,7 +58,6 @@ Create all necessary directories for your project:
 ```bash
 # From the workspace root, create the required directories
 mkdir -p {PROJECT_DIR}/{video_source,data,output}
-# final_outputs,psx_input,reports,frames,psx_output,models,orthomosaics}
 ```
 
 This will create the following directory structure:
@@ -77,20 +74,12 @@ Copy and configure the analysis parameters file:
 ```bash
 # Copy the base configuration file to your project
 cp analysis_params.yaml {PROJECT_DIR}/
-
-# Edit the configuration file to match your project settings
-# The paths in the file should be relative to the workspace root
-# For example:
-#   video_source: "{PROJECT_DIR}/video_source"
-#   base: "{PROJECT_DIR}"
-#   data: "{PROJECT_DIR}/data"
-#   output: "{PROJECT_DIR}/output"
-#   etc.
 ```
 
 The configuration file (`analysis_params.yaml`) located within your `{PROJECT_DIR}` contains all the settings for your project.
 
 Make sure to:
+
 1. Review and update the project name and notes inside the `{PROJECT_DIR}/analysis_params.yaml` file.
 2. Adjust any processing parameters within the `{PROJECT_DIR}/analysis_params.yaml` file as needed for your specific project.
 3. Note that the primary input/output directory paths (`video_source`, `data`, `output`, etc.) are typically derived automatically by the scripts based on the `{PROJECT_DIR}` you provide when running them. You usually do not need to define these explicitly in the YAML file unless you intend to override the default structure.
@@ -98,6 +87,7 @@ Make sure to:
 ### 3. Installing Dependencies
 
 The pipeline requires dependencies in two Python environments:
+
 1. Your local environment (for frame extraction - step0.py)
 2. Metashape's Python environment (for 3D processing - step1.py and beyond)
 
@@ -121,36 +111,10 @@ To run Metashape scripts with the correct Python environment, you'll need to set
 
 The general format for running Metashape scripts is:
 ```bash
-# From the workspace root
 PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/stepX.py {PROJECT_DIR}
 ```
 
 Where `stepX.py` is the specific step you want to run (step1.py, step2.py, etc.) and `{PROJECT_DIR}` is the path to your project directory containing `analysis_params.yaml`.
-
-### 4. Project Configuration
-
-Use the steps above to configure your project.
-
-1. **Verify Directory Structure**:
-   ```bash
-   # From the workspace root, check the project structure
-   ls -la {PROJECT_DIR}
-   ```
-   You should see:
-   - `.venv/` (Python virtual environment)
-   - `video_source/` (for input videos)
-   - `data/` 
-   - `output/`
-   - `analysis_params.yaml` (configuration file)
-
-2. **Configure Your Project**:
-   - Edit `{PROJECT_DIR}/analysis_params.yaml` to match your project settings
-   - Place your video files in `{PROJECT_DIR}/video_source/`
-   - All processing will happen within the project directory
-
-3. **Verify Environment Setup**:
-   - Local Python environment is set up in `{PROJECT_DIR}/.venv`
-   - All required directories exist in `{PROJECT_DIR}`
 
 ## Workflow Overview
 
@@ -174,10 +138,6 @@ The complete processing workflow consists of the following steps:
 This step extracts frames from video footage at a specified rate.
 
 ```bash
-# Run step0.py, prompting for project directory or providing as argument
-python src/step0.py {PROJECT_DIR}
-
-# OR run without arguments to be prompted
 python src/step0.py            
 ```
 
@@ -195,9 +155,7 @@ This step performs the initial 3D reconstruction using the extracted frames. It 
 
 Note this is the most time consuming step
 
-**On macOS**:
 ```bash
-
 PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step1.py
 ```
 
@@ -217,7 +175,7 @@ This will:
 
 After Step 1, manually check the quality of the generated models and make any necessary adjustments:
 
-1. Open each PSX file in the `{PROJECT_DIR}/output/psx_input` directory with Metashape
+1. Open each PSX file in the `{PROJECT_DIR}/data/psx_input` directory with Metashape
 2. For each model (chunk) in the project:
    - Review camera alignment and model quality
    - Ensure point cloud is clean and representative of the model
@@ -230,20 +188,8 @@ After Step 1, manually check the quality of the generated models and make any ne
 
 This step consolidates chunks by site to prepare for final processing.
 
-**On macOS**:
 ```bash
-# Run with project directory as argument
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py {PROJECT_DIR}
-# OR run without arguments to be prompted for the project directory
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py
-```
-
-**On Windows**:
-```cmd
-:: Run with project directory as argument
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step2.py C:\path\to\your\project\directory
-:: OR run without arguments to be prompted for the project directory
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step2.py
+PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py
 ```
 
 This will:
@@ -292,14 +238,6 @@ This step adds scale bars (if coded targets are present), removes small componen
 /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3.py
 ```
 
-**On Windows**:
-```cmd
-:: Run with project directory as argument
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step3.py C:\path\to\your\project\directory
-:: OR run without arguments to be prompted for the project directory
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step3.py
-```
-
 This will:
 1. Load project configuration from the specified directory's `analysis_params.yaml` file
 2. Process each project in the `psx_output` directory
@@ -336,14 +274,6 @@ This step creates final high-resolution outputs and uploads decimated models to 
 /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step4.py {PROJECT_DIR}
 # OR run without arguments to be prompted for the project directory
 /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step4.py
-```
-
-**On Windows**:
-```cmd
-:: Run with project directory as argument
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step4.py C:\path\to\your\project\directory
-:: OR run without arguments to be prompted for the project directory
-"C:\Program Files\Agisoft\Metashape Pro\metashape.exe" -r src\step4.py
 ```
 
 This will:
@@ -394,25 +324,25 @@ See the configuration files for complete parameter descriptions.
 
 These scripts provide helpful utilities for managing the processing environment.
 
-### `src/reset.sh`
+### `src/utility/reset.sh`
 
 This shell script helps reset a project directory to a clean state. It can selectively remove output files, intermediate data, or the entire project structure based on command-line flags.
 
 **Usage:**
 ```bash
 # Run from the workspace root
-./src/reset.sh -d {PROJECT_DIR} [flags]
+./src/utility/reset.sh -d {PROJECT_DIR} [flags]
 ```
 Refer to the script comments for available flags and their functions.
 
-### `src/enumerate_gpus.py`
+### `src/utility/enumerate_gpus.py`
 
 This Python script lists the available GPUs that Metashape can detect and use. This is useful for verifying GPU configuration and ensuring Metashape is utilizing the expected hardware acceleration.
 
 **Usage:**
 ```bash
 # Run using Metashape's Python environment
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/enumerate_gpus.py
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/utility/enumerate_gpus.py
 ```
 
 ## Troubleshooting
@@ -425,10 +355,7 @@ This Python script lists the available GPUs that Metashape can detect and use. T
    
    ```bash
    # On macOS/Linux
-   ./install_metashape_deps.sh
-   
-   # On Windows
-   install_metashape_deps.bat
+   ./src/legacy/install_metashape_deps.sh
    ```
 
 2. **PSX files not generated**
