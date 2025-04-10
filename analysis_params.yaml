@@ -3,24 +3,10 @@
 
 # Project Information
 project:
-  name: "3D_sample_project_10april25_1_thruStep1"
+  name: "test" # Note: This name will be overridden by the directory name
   notes: |
     running on big proxy files from the cinema raw encoding process. using various panama and trmp transect.
-
-# Configuration file path - points to project-specific analysis_params.yaml
-config_path: "examples/sample_project_10april25_merged/analysis_params.yaml"
-
-# Directory Configuration
-directories:
-  video_source: "examples/sample_project_10april25_merged/video_source"  # Directory containing MP4/MOV files
-  base: "examples/sample_project_10april25_merged"                       # Project base directory
-  data: "examples/sample_project_10april25_merged/data"                  # Will be created in project directory
-  output: "examples/sample_project_10april25_merged/output"              # Main output directory for all generated files
-  adobe_presets: "presets/lightroom"          # Adobe Lightroom presets
-  metashape_presets: "presets/premiere"       # Metashape presets
-  scripts: "src"                              # Location of processing scripts
-  config: "src/config.py"                     # Location of config file
-  
+ 
 # Processing Parameters
 processing:
   # Frame Extraction (step0.py)
@@ -71,8 +57,8 @@ processing:
       
       # UV mapping
       mapping_mode: "GenericMapping"   # UV mapping mode: GenericMapping, OrthophotoMapping, AdaptiveOrthophotoMapping, SphericalMapping, CameraMapping
-      texture_size: 16384              # Texture size in pixels (power of 2) (16384)
-      page_count: 4                    # Number of texture pages (4)
+      texture_size: 4096              # Texture size in pixels (power of 2) (16384 = 128^2 ; 4096 = 64^2 ; 4096 = 32^2 ; 2048 = 16^2 ; 1024 = 8^2 ; 512 = 4^2 ; 256 = 2^2 ; 128 = 1^2) 
+      page_count: 1                    # Number of texture pages (4)
       
       # Texture building
       texture_type: "DiffuseMap"       # Texture type: DiffuseMap, NormalMap, OcclusionMap
