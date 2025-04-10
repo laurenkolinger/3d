@@ -30,12 +30,12 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(os.path.join(DIRECTORIES["reports"], f"step0_{PROJECT_NAME}.log")),
+        logging.FileHandler(os.path.join(DIRECTORIES["logs"], f"step0_{PROJECT_NAME}.log")),
         logging.StreamHandler()
     ]
 )
 
-def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, extraction_rate):
+def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_name):
     """
     Extract frames from a video file using FFmpeg with TIFF format (rgb24) and hardware acceleration.
     
@@ -43,7 +43,7 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, extractio
         video_path (str): Path to the video file
         output_dir (str): Directory to save frames
         frames_per_transect (int): Number of frames to extract
-        extraction_rate (float): Rate at which to extract frames (1.0 = all frames)
+        video_name (str): Base name of the video file for frame naming
     
     Returns:
         tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
@@ -70,21 +70,20 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, extractio
     os.makedirs(output_dir, exist_ok=True)
     
     # Calculate fps value for the extraction
-    if frames_per_transect > 0:
-        # Calculate the fps needed to get exactly frames_per_transect frames
-        extract_fps = frames_per_transect / video_length_seconds
-        logging.info(f"Setting fps={extract_fps} to extract {frames_per_transect} frames from {video_length_seconds:.2f}s video")
-    else:
-        # Use the specified extraction rate
-        extract_fps = fps * extraction_rate
-        logging.info(f"Setting fps={extract_fps} (extraction rate={extraction_rate})")
+    if frames_per_transect <= 0:
+        raise ValueError(f"frames_per_transect must be > 0. Found {frames_per_transect}")
+    if video_length_seconds <= 0:
+        raise ValueError(f"Video length must be > 0 seconds to calculate fps. Found {video_length_seconds:.2f}s")
+        
+    extract_fps = frames_per_transect / video_length_seconds
+    logging.info(f"Setting fps={extract_fps} to extract {frames_per_transect} frames from {video_length_seconds:.2f}s video")
     
     # Extract frames using FFmpeg with TIFF format
     logging.info(f"Extracting frames using TIFF format with rgb24")
     print(f"Starting TIFF frame extraction from {os.path.basename(video_path)}")
     
-    # Define output pattern for the frames
-    output_pattern = os.path.join(output_dir, f"frame_%06d.tiff")
+    # Define output pattern for the frames using video_name and 5-digit counter
+    output_pattern = os.path.join(output_dir, f"{video_name}_%05d.tiff")
     
     # FFmpeg command for TIFF extraction with hardware acceleration
     ffmpeg_cmd = [
@@ -186,7 +185,7 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, extractio
     
     return frames_extracted, extracted_frame_paths, video_length_seconds, total_frames
 
-def extract_frames_ffmpeg_alternative(video_path, output_dir, frames_per_transect, extraction_rate):
+def extract_frames_ffmpeg_alternative(video_path, output_dir, frames_per_transect, video_name):
     """
     Alternative high-quality extraction method for cinema footage using EXR format.
     
@@ -194,7 +193,7 @@ def extract_frames_ffmpeg_alternative(video_path, output_dir, frames_per_transec
         video_path (str): Path to the video file
         output_dir (str): Directory to save frames
         frames_per_transect (int): Number of frames to extract
-        extraction_rate (float): Rate at which to extract frames (1.0 = all frames)
+        video_name (str): Base name of the video file for frame naming
     
     Returns:
         tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
@@ -215,15 +214,14 @@ def extract_frames_ffmpeg_alternative(video_path, output_dir, frames_per_transec
     video_length_seconds = total_frames / fps if fps > 0 else 0
     
     # Calculate which frames to extract
-    if frames_per_transect > 0:
-        # Extract specific number of frames
-        frame_indices = np.linspace(0, total_frames-1, frames_per_transect, dtype=int)
-        logging.info(f"Will extract {frames_per_transect} frames evenly spaced throughout video")
+    if frames_per_transect <= 0:
+        raise ValueError(f"frames_per_transect must be > 0. Found {frames_per_transect}")
+        
+    if frames_per_transect > total_frames:
+        logging.warning(f"Requested {frames_per_transect} frames, but video only has {total_frames} frames. Extracting all frames.")
+        frame_indices = np.arange(total_frames)
     else:
-        # Calculate frame interval based on extraction rate
-        frame_interval = int(1 / extraction_rate)
-        frame_indices = range(0, total_frames, frame_interval)
-        logging.info(f"Will extract frames at interval of {frame_interval} (rate={extraction_rate})")
+        frame_indices = np.linspace(0, total_frames - 1, frames_per_transect, dtype=int)
     
     extracted_frame_paths = []
     frames_extracted = 0
@@ -256,8 +254,10 @@ def extract_frames_ffmpeg_alternative(video_path, output_dir, frames_per_transec
             if os.path.exists(test_output):
                 working_format = (ext, params)
                 os.remove(test_output)
+                logging.info(f"Selected {ext} format for extraction.")
                 break
-        except:
+        except Exception as e:
+            logging.debug(f"Format test failed for {ext}: {e}")
             continue
     
     if not working_format:
@@ -276,8 +276,9 @@ def extract_frames_ffmpeg_alternative(video_path, output_dir, frames_per_transec
         # Calculate timestamp for this frame
         timestamp = frame_idx / fps if fps > 0 else 0
         
-        # Output path
-        output_path = os.path.join(output_dir, f"frame_{frame_idx:06d}{ext}")
+        # Output path using video_name and 1-based counter
+        frame_counter = i + 1
+        output_path = os.path.join(output_dir, f"{video_name}_{frame_counter:05d}{ext}")
         
         # Extract this specific frame
         frame_cmd = [
@@ -309,7 +310,7 @@ def extract_frames_ffmpeg_alternative(video_path, output_dir, frames_per_transec
     
     return frames_extracted, extracted_frame_paths, video_length_seconds, total_frames
 
-def extract_frames_ffmpeg_png(video_path, output_dir, frames_per_transect, extraction_rate):
+def extract_frames_ffmpeg_png(video_path, output_dir, frames_per_transect, video_name):
     """
     Extract frames from a video file using FFmpeg for highest quality as PNG (lossless).
     
@@ -317,7 +318,7 @@ def extract_frames_ffmpeg_png(video_path, output_dir, frames_per_transect, extra
         video_path (str): Path to the video file
         output_dir (str): Directory to save frames
         frames_per_transect (int): Number of frames to extract
-        extraction_rate (float): Rate at which to extract frames (1.0 = all frames)
+        video_name (str): Base name of the video file for frame naming
     
     Returns:
         tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
@@ -344,15 +345,14 @@ def extract_frames_ffmpeg_png(video_path, output_dir, frames_per_transect, extra
     os.makedirs(output_dir, exist_ok=True)
     
     # Calculate which frames to extract
-    if frames_per_transect > 0:
-        # Extract specific number of frames
-        frame_indices = np.linspace(0, total_frames-1, frames_per_transect, dtype=int)
-        logging.info(f"Will extract {frames_per_transect} PNG frames evenly spaced throughout video")
+    if frames_per_transect <= 0:
+        raise ValueError(f"frames_per_transect must be > 0. Found {frames_per_transect}")
+        
+    if frames_per_transect > total_frames:
+        logging.warning(f"Requested {frames_per_transect} frames, but video only has {total_frames} frames. Extracting all frames.")
+        frame_indices = np.arange(total_frames)
     else:
-        # Calculate frame interval based on extraction rate
-        frame_interval = int(1 / extraction_rate)
-        frame_indices = range(0, total_frames, frame_interval)
-        logging.info(f"Will extract PNG frames at interval of {frame_interval} (rate={extraction_rate})")
+        frame_indices = np.linspace(0, total_frames - 1, frames_per_transect, dtype=int)
     
     extracted_frame_paths = []
     frames_extracted = 0
@@ -370,7 +370,8 @@ def extract_frames_ffmpeg_png(video_path, output_dir, frames_per_transect, extra
         timestamp = frame_idx / fps if fps > 0 else 0
         
         # Output file path (PNG for lossless quality)
-        output_path = os.path.join(output_dir, f"frame_{frame_idx:06d}.png")
+        frame_counter = i + 1
+        output_path = os.path.join(output_dir, f"{video_name}_{frame_counter:05d}.png")
         
         # Extract just this one frame as PNG (lossless)
         frame_cmd = [
@@ -412,7 +413,7 @@ def extract_frames_ffmpeg_png(video_path, output_dir, frames_per_transect, extra
     
     return frames_extracted, extracted_frame_paths, video_length_seconds, total_frames
 
-def extract_frames_png(video_path, output_dir, frames_per_transect, extraction_rate):
+def extract_frames_png(video_path, output_dir, frames_per_transect, video_name):
     """
     Extract frames as PNG files for lossless quality.
     
@@ -420,7 +421,7 @@ def extract_frames_png(video_path, output_dir, frames_per_transect, extraction_r
         video_path (str): Path to the video file
         output_dir (str): Directory to save frames
         frames_per_transect (int): Number of frames to extract
-        extraction_rate (float): Rate at which to extract frames (1.0 = all frames)
+        video_name (str): Base name of the video file for frame naming
     
     Returns:
         tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
@@ -438,13 +439,14 @@ def extract_frames_png(video_path, output_dir, frames_per_transect, extraction_r
     video_length_seconds = total_frames / fps if fps > 0 else 0
     
     # Calculate which frames to extract
-    if frames_per_transect > 0:
-        # Extract specific number of frames
-        frame_indices = np.linspace(0, total_frames-1, frames_per_transect, dtype=int)
+    if frames_per_transect <= 0:
+        raise ValueError(f"frames_per_transect must be > 0. Found {frames_per_transect}")
+        
+    if frames_per_transect > total_frames:
+        logging.warning(f"Requested {frames_per_transect} frames, but video only has {total_frames} frames. Extracting all frames.")
+        frame_indices = np.arange(total_frames)
     else:
-        # Calculate frame interval based on extraction rate
-        frame_interval = int(1 / extraction_rate)
-        frame_indices = range(0, total_frames, frame_interval)
+        frame_indices = np.linspace(0, total_frames - 1, frames_per_transect, dtype=int)
     
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
@@ -453,12 +455,13 @@ def extract_frames_png(video_path, output_dir, frames_per_transect, extraction_r
     frames_extracted = 0
     extracted_frame_paths = []
     
-    for frame_idx in frame_indices:
+    for i, frame_idx in enumerate(frame_indices):
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, frame = cap.read()
         if ret:
-            # Save as PNG for lossless quality
-            output_path = os.path.join(output_dir, f"frame_{frame_idx:06d}.png")
+            # Save as PNG for lossless quality using video_name and 1-based counter
+            frame_counter = i + 1
+            output_path = os.path.join(output_dir, f"{video_name}_{frame_counter:05d}.png")
             cv2.imwrite(output_path, frame)
             frames_extracted += 1
             extracted_frame_paths.append(output_path)
@@ -466,7 +469,7 @@ def extract_frames_png(video_path, output_dir, frames_per_transect, extraction_r
     cap.release()
     return frames_extracted, extracted_frame_paths, video_length_seconds, total_frames
 
-def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate):
+def extract_frames(video_path, output_dir, frames_per_transect, video_name):
     """
     Extract frames from a video file using OpenCV (legacy method).
     
@@ -474,6 +477,7 @@ def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate)
         video_path (str): Path to the video file
         output_dir (str): Directory to save frames
         frames_per_transect (int): Number of frames to extract
+        video_name (str): Base name of the video file for frame naming
     
     Returns:
         tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
@@ -506,11 +510,12 @@ def extract_frames(video_path, output_dir, frames_per_transect, extraction_rate)
     frames_extracted = 0
     extracted_frame_paths = []
     
-    for frame_idx in frame_indices:
+    for i, frame_idx in enumerate(frame_indices):
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, frame = cap.read()
         if ret:
-            output_path = os.path.join(output_dir, f"frame_{frame_idx:06d}.jpg")
+            frame_counter = i + 1 # Use 1-based counter
+            output_path = os.path.join(output_dir, f"{video_name}_{frame_counter:05d}.jpg")
             cv2.imwrite(output_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 100])
             frames_extracted += 1
             extracted_frame_paths.append(output_path)
@@ -551,7 +556,8 @@ def process_video(video_path):
         frames_extracted, frame_paths, video_length, total_frames = extract_frames_ffmpeg(
             video_path,
             output_dir,
-            FRAMES_PER_TRANSECT
+            FRAMES_PER_TRANSECT,
+            video_name
         )
         
         # Method 2: Lossless PNG frames
@@ -559,7 +565,7 @@ def process_video(video_path):
         #     video_path,
         #     output_dir, 
         #     FRAMES_PER_TRANSECT,
-        #     EXTRACTION_RATE
+        #     video_name
         # )
         
         end_time = datetime.datetime.now()
@@ -598,41 +604,41 @@ def process_video(video_path):
         })
         return video_name, False
 
-def create_frame_summary():
-    """Create a summary of extracted frames for all transects."""
-    # Use data_root directory which user is expected to create
-    summary_path = os.path.join(DIRECTORIES["data_root"], "frame_extraction_summary.csv")
-    
-    # Get all transect directories
-    frames_dir = DIRECTORIES["frames"]
-    transect_dirs = []
-    if os.path.exists(frames_dir):
-        transect_dirs = [d for d in os.listdir(frames_dir) 
-                        if os.path.isdir(os.path.join(frames_dir, d))]
-    
-    # Write summary to CSV
-    with open(summary_path, 'w') as f:
-        f.write("Transect ID,Video Length (s),Total Frames,Frames Extracted,Extraction Date,Processing Time (s),Status\n")
-        
-        for transect_id in transect_dirs:
-            status = get_transect_status(transect_id)
-            frames = status.get("Frames Extracted", "0")
-            total_frames = status.get("Total Video Frames", "0")
-            video_length = status.get("Video Length (s)", "0")
-            date = status.get("Extraction Timestamp", status.get("Step 0 end time", ""))
-            processing_time = status.get("Step 0 processing time (s)", "0")
-            complete = status.get("Step 0 complete", "False")
-            
-            status_text = "Complete" if complete == "True" else "Failed"
-            f.write(f"{transect_id},{video_length},{total_frames},{frames},{date},{processing_time},{status_text}\n")
-    
-    logging.info(f"Frame extraction summary saved to {summary_path}")
+# def create_frame_summary(): # Removed function definition
+#     """Create a summary of extracted frames for all transects."""
+#     # Use data_root directory which user is expected to create
+#     summary_path = os.path.join(DIRECTORIES["data_root"], "frame_extraction_summary.csv")
+#     
+#     # Get all transect directories
+#     frames_dir = DIRECTORIES["frames"]
+#     transect_dirs = []
+#     if os.path.exists(frames_dir):
+#         transect_dirs = [d for d in os.listdir(frames_dir) 
+#                         if os.path.isdir(os.path.join(frames_dir, d))]
+#     
+#     # Write summary to CSV
+#     with open(summary_path, 'w') as f:
+#         f.write("Transect ID,Video Length (s),Total Frames,Frames Extracted,Extraction Date,Processing Time (s),Status\n")
+#         
+#         for transect_id in transect_dirs:
+#             status = get_transect_status(transect_id)
+#             frames = status.get("Frames Extracted", "0")
+#             total_frames = status.get("Total Video Frames", "0")
+#             video_length = status.get("Video Length (s)", "0")
+#             date = status.get("Extraction Timestamp", status.get("Step 0 end time", ""))
+#             processing_time = status.get("Step 0 processing time (s)", "0")
+#             complete = status.get("Step 0 complete", "False")
+#             
+#             status_text = "Complete" if complete == "True" else "Failed"
+#             f.write(f"{transect_id},{video_length},{total_frames},{frames},{date},{processing_time},{status_text}\n")
+#     
+#     logging.info(f"Frame extraction summary saved to {summary_path}")
 
 def main():
     """Main function to process all videos in the source directory."""
-    # Create only needed subdirectories
-    os.makedirs(DIRECTORIES["frames"], exist_ok=True)
-    os.makedirs(DIRECTORIES["reports"], exist_ok=True)
+    # Create only needed subdirectories - This is handled by config.py now
+    # os.makedirs(DIRECTORIES["frames"], exist_ok=True) 
+    # os.makedirs(DIRECTORIES["reports"], exist_ok=True) # Removed this line causing KeyError
     
     # Get list of video files
     video_files = []
@@ -652,8 +658,8 @@ def main():
         transect_id, success = process_video(str(video_path))
         results.append((transect_id, success))
     
-    # Create summary of results
-    create_frame_summary()
+    # Create summary of results - REMOVED
+    # create_frame_summary()
     
     # Report final status
     successful = sum(1 for _, success in results if success)

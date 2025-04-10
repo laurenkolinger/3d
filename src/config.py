@@ -19,6 +19,8 @@ def load_yaml(yaml_path):
     try:
         with open(yaml_path, 'r') as f:
             params = yaml.safe_load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Could not find analysis_params.yaml at: {yaml_path}")
     except Exception as e:
         # If yaml module is not available, provide a helpful error message
         if 'yaml' in str(e) and 'No module named' in str(e):
@@ -32,97 +34,105 @@ def load_yaml(yaml_path):
             raise e
     
     # Validate required sections
-    required_sections = ['project', 'directories', 'processing']
+    required_sections = ['project', 'processing'] # Removed 'directories'
     for section in required_sections:
         if section not in params:
-            raise ValueError(f"Missing required section '{section}' in YAML file")
+            raise ValueError(f"Missing required section '{section}' in {yaml_path}")
     
     # Validate required processing parameters for all steps
     required_processing = [
-        'frames_per_transect', 'extraction_rate',         # Step 0
-        'chunk_size', 'use_gpu', 'metashape',             # Step 1
-        'chunk_management',                               # Step 2
-        'model_processing',                               # Step 3
-        'final_exports'                                   # Step 4
+        'frames_per_transect',                    # Step 0
+        'chunk_size', 'use_gpu', 'metashape',     # Step 1
+        'chunk_management',                       # Step 2
+        'model_processing',                       # Step 3
+        'final_exports'                           # Step 4
     ]
     
     for param in required_processing:
         if param not in params['processing']:
-            print(f"Warning: Missing recommended parameter '{param}' under 'processing' in YAML file")
+            print(f"Warning: Missing recommended parameter '{param}' under 'processing' in {yaml_path}")
     
     return params
 
-def get_yaml_path():
-    """Get the path to the YAML file by asking user for project directory."""
+def get_project_dir_path():
+    """Get the path to the project directory containing analysis_params.yaml."""
     # First try to get from command line
     if len(sys.argv) > 1:
-        return sys.argv[1]
-    
+        project_dir = sys.argv[1]
+        # Remove potential surrounding single or double quotes and trailing slashes
+        project_dir = project_dir.strip('\'\"').rstrip('/')
+        # Verify directory exists
+        if not os.path.isdir(project_dir):
+             raise FileNotFoundError(f"Project directory not found: {project_dir}")
+        return project_dir
+
     # Prompt user for project directory
-    print("Please enter the absolute path to your project directory containing analysis_params.yaml")
-    print("Example: /Users/yourname/examples/sample_project/ or '/Users/yourname/examples/sample_project'")
+    print("Please enter the absolute path to your project directory.")
+    print("Example: /Users/yourname/examples/sample_project or \'/Users/yourname/examples/sample_project\'")
     project_dir = input("Project directory: ").strip()
     
     # Remove potential surrounding single or double quotes
-    project_dir = project_dir.strip('\'"')
+    project_dir = project_dir.strip('\'\"')
     
     # Remove any trailing slashes
     project_dir = project_dir.rstrip('/')
     
-    # Construct path to yaml file
-    yaml_path = os.path.join(project_dir, "analysis_params.yaml")
+    # Verify directory exists
+    if not os.path.isdir(project_dir):
+        raise FileNotFoundError(f"Project directory not found: {project_dir}")
     
-    # Verify file exists
-    if not os.path.exists(yaml_path):
-        raise FileNotFoundError(f"Could not find analysis_params.yaml in {project_dir}")
-    
-    return yaml_path
+    return project_dir
 
 # Get the directory name from a path (last component)
 def get_dir_name(path):
     """Extract the directory name (last component) from a path."""
-    # Handle trailing slashes
-    path = path.rstrip('/')
-    # Get the last component of the path
-    return os.path.basename(path)
+    return os.path.basename(path.rstrip('/'))
+
+# --- Configuration Loading ---
+
+# Get the project directory path
+PROJECT_DIR = get_project_dir_path()
+
+# Construct path to YAML file within the project directory
+YAML_PATH = os.path.join(PROJECT_DIR, "analysis_params.yaml")
 
 # Load YAML configuration
-YAML_PATH = get_yaml_path()
 PARAMS = load_yaml(YAML_PATH)
 
-# Get project directory (parent dir of the YAML file)
-PROJECT_DIR = os.path.dirname(YAML_PATH)
+# Derive project name and ID from the directory path
+PROJECT_NAME = get_dir_name(PROJECT_DIR)
+PROJECT_ID = PROJECT_NAME # Use the derived name as the ID
 
-# Directory containing your MP4/MOV video files
-VIDEO_SOURCE_DIRECTORY = PARAMS['directories']['video_source']
+# --- Directory Definitions (Derived from PROJECT_DIR) ---
+BASE_DIRECTORY = PROJECT_DIR
+DATA_DIRECTORY = os.path.join(PROJECT_DIR, "data")
+OUTPUT_DIRECTORY = os.path.join(PROJECT_DIR, "output")
+VIDEO_SOURCE_DIRECTORY = os.path.join(PROJECT_DIR, "video_source")
 
-# Base directory for all inputs and outputs
-BASE_DIRECTORY = PARAMS['directories'].get('base', '.')
+# Define standard subdirectories relative to the project
+DIRECTORIES = {
+    "base": BASE_DIRECTORY,
+    "data_root": DATA_DIRECTORY,
+    "output_root": OUTPUT_DIRECTORY,
+    "video_source": VIDEO_SOURCE_DIRECTORY, # Added video source here
+    "frames": os.path.join(DATA_DIRECTORY, "frames"),
+    "logs": os.path.join(OUTPUT_DIRECTORY, "logs"),
+    "psx_input": os.path.join(DATA_DIRECTORY, "psx_input"),
+    "orthomosaics": os.path.join(OUTPUT_DIRECTORY, "orthomosaics"),
+    "models": os.path.join(OUTPUT_DIRECTORY, "models"),
+    "reports": os.path.join(OUTPUT_DIRECTORY, "reports"), # Added reports directory
+    "psx_output": os.path.join(OUTPUT_DIRECTORY, "psx"), # Renamed from psx_consolidated
+    "final_outputs": os.path.join(OUTPUT_DIRECTORY, "final")
+    # Removed adobe_presets, metashape_presets, scripts, config
+}
 
-# Input data directory (where frames will be stored)
-DATA_DIRECTORY = PARAMS['directories'].get('data', 'data')
-
-# Output directory (where logs will be stored)
-OUTPUT_DIRECTORY = PARAMS['directories'].get('output', 'output')
+# --- Processing Parameters ---
 
 # Number of frames to extract per transect
 FRAMES_PER_TRANSECT = PARAMS['processing']['frames_per_transect']
 
-# Project metadata - derive name from directory if not specified
-PROJECT_NAME = PARAMS['project'].get('name')
-if not PROJECT_NAME:
-    # Derive from project directory name
-    PROJECT_NAME = get_dir_name(PROJECT_DIR)
-
+# Project metadata from YAML
 PROJECT_NOTES = PARAMS['project'].get('notes', '')
-
-# Get a unique project identifier that's filesystem-safe
-def get_project_id():
-    """Get a filesystem-safe identifier for this project."""
-    # Use the directory name as the project ID
-    return get_dir_name(PROJECT_DIR)
-
-PROJECT_ID = get_project_id()
 
 # Metashape processing parameters
 METASHAPE_DEFAULTS = PARAMS['processing']['metashape']['defaults']
@@ -130,67 +140,57 @@ CHUNK_SIZE = PARAMS['processing']['chunk_size']
 USE_GPU = PARAMS['processing']['use_gpu']
 MAX_CHUNKS_PER_PSX = PARAMS['processing'].get('max_chunks_per_psx', 5)
 
-# Generate unique timestamp for this processing run
+# --- Static Paths (Relative to Script Location or Assumed Structure) ---
+# Get the directory where this config.py script is located
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(SCRIPT_DIR) # Assumes src is one level down from root
+
+# Define preset paths relative to repository root
+DIRECTORIES["adobe_presets"] = os.path.join(REPO_ROOT, "presets/lightroom")
+DIRECTORIES["metashape_presets"] = os.path.join(REPO_ROOT, "presets/metashape") # Changed from premiere
+
+# --- Runtime Variables ---
 TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-# Directory structure
-DIRECTORIES = {
-    "base": BASE_DIRECTORY,
-    "data_root": DATA_DIRECTORY,
-    "output_root": OUTPUT_DIRECTORY,
-    "frames": os.path.join(DATA_DIRECTORY, "frames"),
-    "reports": os.path.join(OUTPUT_DIRECTORY, "reports"),
-    "psx_input": os.path.join(DATA_DIRECTORY, "psx_input"),
-    "orthomosaics": os.path.join(OUTPUT_DIRECTORY, "orthomosaics"),
-    "models": os.path.join(OUTPUT_DIRECTORY, "models"),
-    "psx_output": PARAMS['directories'].get('psx_output', os.path.join(OUTPUT_DIRECTORY, "05_outputs/psx")),
-    "adobe_presets": PARAMS['directories'].get('adobe_presets', ''),
-    "metashape_presets": PARAMS['directories'].get('metashape_presets', ''),
-    "scripts": PARAMS['directories'].get('scripts', ''),
-    "final_outputs": PARAMS['directories'].get('final_outputs', os.path.join(OUTPUT_DIRECTORY, "final"))
-}
+# --- Logging Configuration ---
+LOG_FILE = os.path.join(DIRECTORIES["logs"], f"processing_{PROJECT_NAME}.log")
 
-# Configure logging
-LOG_FILE = os.path.join(DIRECTORIES["reports"], f"processing_{PROJECT_NAME}.log")
+# --- Helper Functions ---
 
 def create_directories():
-    """Create only required directories that should exist within data/ and output/ folders."""
-    # Only create directories that the user expects to be created
-    # (Skip creating any files directly in the project root)
+    """Create required subdirectories within the project folder."""
+    # Only create directories defined within the project (data/output subfolders)
     for dir_name, dir_path in DIRECTORIES.items():
-        # Skip if not a string or is a URL
-        if not isinstance(dir_path, str) or dir_path.startswith(('http://', 'https://')):
-            continue
-            
-        # Skip empty paths
-        if not dir_path:
-            continue
-            
-        # Only create directories within data and output folders
-        # or if they are the data and output folders themselves
-        # Exclude specific directories like psx_output and final_outputs early on
-        if dir_name in ["psx_output", "final_outputs"]:
-            continue
-            
-        if (dir_name in ["data_root", "output_root"] or
-            dir_path.startswith(DIRECTORIES["data_root"]) or
-            dir_path.startswith(DIRECTORIES["output_root"])):
-            os.makedirs(dir_path, exist_ok=True)
-            
+        if dir_path.startswith(PROJECT_DIR): # Check if path is within the project base
+             # Exclude final_outputs from automatic creation initially
+            if dir_name == "final_outputs":
+                continue
+                
+             # Ensure the specific paths for logs and reports are created
+            # Simplify: Just attempt to create all other project-relative dirs
+            # if dir_name in ["logs", "reports", "frames", "psx_input", "orthomosaics", "models", "psx_output"]:
+            try:
+                os.makedirs(dir_path, exist_ok=True)
+            except OSError as e:
+                 print(f"Warning: Could not create directory {dir_path}: {e}")
+
 def ensure_parent_directory(filepath):
     """Ensure the parent directory of a file exists."""
     parent_dir = os.path.dirname(filepath)
-    if parent_dir:
-        os.makedirs(parent_dir, exist_ok=True)
-        
-def get_tracking_file(model_id=None):
-    """Get tracking file path for the project."""
+    if parent_dir and not os.path.exists(parent_dir): # Check if exists before creating
+        try:
+            os.makedirs(parent_dir, exist_ok=True)
+        except OSError as e:
+            print(f"Warning: Could not create parent directory {parent_dir} for {filepath}: {e}")
+
+def get_tracking_file(model_id=None): # model_id is not used here anymore
+    """Get tracking file path for the project (now directly in project dir)."""
     # Use project ID in the filename to create a unique tracking file per project
+    # Place it directly in the project directory (BASE_DIRECTORY)
     return os.path.join(DIRECTORIES["base"], f"status_{PROJECT_ID}.csv")
 
 def get_tracking_files():
-    """Get list of all tracking files for this project."""
-    # This is kept for backward compatibility but will now return a single file
+    """Get list of all tracking files for this project (always returns one path)."""
     tracking_file = get_tracking_file()
     return [tracking_file] if os.path.exists(tracking_file) else []
 
@@ -198,262 +198,292 @@ def initialize_tracking(model_id):
     """Initialize tracking CSV file if not exists, and add a row for the model."""
     tracking_file = get_tracking_file()
     
-    # If file doesn't exist, create it with comprehensive headers covering all processing steps
-    if not os.path.exists(tracking_file):
-        # Make sure the parent directory exists before writing the file
-        ensure_parent_directory(tracking_file)
-        
-        with open(tracking_file, 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow([
-                "Model ID", "Status", 
-                # Step 0 columns
-                "Step 0 complete", "Video Length (s)", "Total Video Frames", "Frames Extracted", 
-                "Video Source", "Extraction Timestamp", "Step 0 start time", "Step 0 end time",
-                "Step 0 processing time (s)", "Frames directory",
-                # Step 1 columns
-                "Step 1 complete", "Step 1 start time", "Step 1 end time", 
-                "Step 1 processing time (s)", "Aligned cameras", "Total cameras", 
-                "PSX file", "Report file", "Step 1 error time",
-                # Step 2 columns
-                "Step 2 complete", "Step 2 site", "Step 2 consolidation time",
-                # Step 3 columns
-                "Step 3 complete", "Step 3 scale applied", "Step 3 ortho exported",
-                "Step 3 model exported", "Step 3 processing time",
-                # Step 4 columns
-                "Step 4 complete", "Step 4 web published", "Sketchfab URL",
-                "Step 4 high-res exported", "Step 4 processing time",
-                # General
-                "Notes"
-            ])
+    # Ensure parent directory exists (should be project dir, usually exists)
+    ensure_parent_directory(tracking_file)
     
+    # Comprehensive headers covering all processing steps
+    headers = [
+        "Model ID", "Status", 
+        # Step 0 columns
+        "Step 0 complete", "Video Length (s)", "Total Video Frames", "Frames Extracted", 
+        "Video Source", "Extraction Timestamp", "Step 0 start time", "Step 0 end time",
+        "Step 0 processing time (s)", "Frames directory",
+        # Step 1 columns
+        "Step 1 complete", "Step 1 start time", "Step 1 end time", 
+        "Step 1 processing time (s)", "Aligned cameras", "Total cameras", 
+        "PSX file", "Report file", "Step 1 error time",
+        # Step 2 columns
+        "Step 2 complete", "Step 2 site", "Step 2 consolidation time",
+        # Step 3 columns
+        "Step 3 complete", "Step 3 scale applied", "Step 3 ortho exported",
+        "Step 3 model exported", "Step 3 processing time",
+        # Step 4 columns
+        "Step 4 complete", "Step 4 web published", "Sketchfab URL",
+        "Step 4 high-res exported", "Step 4 processing time",
+        # General
+        "Notes"
+    ]
+
+    file_exists = os.path.exists(tracking_file)
+    rows = []
+    current_header = []
+    
+    if file_exists:
+        try:
+            with open(tracking_file, 'r', newline='') as csvfile:
+                reader = csv.reader(csvfile)
+                rows = list(reader)
+                if rows:
+                    current_header = rows[0]
+        except Exception as e:
+            print(f"Warning: Could not read existing tracking file {tracking_file}: {e}. Will recreate.")
+            file_exists = False # Treat as non-existent if unreadable
+
+    # Check if file needs header or if header is incomplete/incorrect
+    needs_header = not file_exists or not rows or current_header != headers
+    
+    if needs_header:
+        try:
+            with open(tracking_file, 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(headers)
+            rows = [headers] # Reset rows to just the header
+            current_header = headers
+            print(f"Initialized/updated tracking file: {tracking_file}")
+        except Exception as e:
+            print(f"Error: Could not write headers to tracking file {tracking_file}: {e}")
+            return tracking_file # Return path even if write failed
+
     # Check if model_id already exists in the file
     model_exists = False
-    rows = []
-    
-    if os.path.exists(tracking_file):
-        with open(tracking_file, 'r', newline='') as csvfile:
-            reader = csv.reader(csvfile)
-            rows = list(reader)
-            
-            if len(rows) > 0:
-                header = rows[0]
-                # Find the index of the Model ID column
-                try:
-                    id_index = header.index("Model ID")
-                    # Check if model_id exists in any row
-                    for row in rows[1:]:
-                        if row and id_index < len(row) and row[id_index] == model_id:
-                            model_exists = True
-                            break
-                except ValueError:
-                    # If Model ID column doesn't exist, something is wrong with the file
-                    # We'll recreate the header with comprehensive columns
-                    rows = [[
-                        "Model ID", "Status", 
-                        # Step 0 columns
-                        "Step 0 complete", "Video Length (s)", "Total Video Frames", "Frames Extracted", 
-                        "Video Source", "Extraction Timestamp", "Step 0 start time", "Step 0 end time",
-                        "Step 0 processing time (s)", "Frames directory",
-                        # Step 1 columns
-                        "Step 1 complete", "Step 1 start time", "Step 1 end time", 
-                        "Step 1 processing time (s)", "Aligned cameras", "Total cameras", 
-                        "PSX file", "Report file", "Step 1 error time",
-                        # Step 2 columns
-                        "Step 2 complete", "Step 2 site", "Step 2 consolidation time",
-                        # Step 3 columns
-                        "Step 3 complete", "Step 3 scale applied", "Step 3 ortho exported",
-                        "Step 3 model exported", "Step 3 processing time",
-                        # Step 4 columns
-                        "Step 4 complete", "Step 4 web published", "Sketchfab URL",
-                        "Step 4 high-res exported", "Step 4 processing time",
-                        # General
-                        "Notes"
-                    ]]
-    
+    if len(rows) > 1: # Check only if there are data rows
+        try:
+            id_index = current_header.index("Model ID")
+            for row in rows[1:]:
+                if row and len(row) > id_index and row[id_index] == model_id:
+                    model_exists = True
+                    break
+        except ValueError:
+            print(f"Warning: 'Model ID' column not found in {tracking_file}.")
+            # If header is broken, we might have already rewritten it, but double check
+            if current_header != headers:
+                 print("Attempting to fix header again.")
+                 # This case should be rare if header check above worked
+                 try:
+                     with open(tracking_file, 'w', newline='') as csvfile:
+                         writer = csv.writer(csvfile)
+                         writer.writerow(headers)
+                     rows = [headers]
+                     current_header = headers
+                 except Exception as e:
+                     print(f"Error: Could not fix header for {tracking_file}: {e}")
+
     # If model doesn't exist, add it
     if not model_exists:
-        if len(rows) == 0:
-            # File is empty, add comprehensive header
-            rows = [[
-                "Model ID", "Status", 
-                # Step 0 columns
-                "Step 0 complete", "Video Length (s)", "Total Video Frames", "Frames Extracted", 
-                "Video Source", "Extraction Timestamp", "Step 0 start time", "Step 0 end time",
-                "Step 0 processing time (s)", "Frames directory",
-                # Step 1 columns
-                "Step 1 complete", "Step 1 start time", "Step 1 end time", 
-                "Step 1 processing time (s)", "Aligned cameras", "Total cameras", 
-                "PSX file", "Report file", "Step 1 error time",
-                # Step 2 columns
-                "Step 2 complete", "Step 2 site", "Step 2 consolidation time",
-                # Step 3 columns
-                "Step 3 complete", "Step 3 scale applied", "Step 3 ortho exported",
-                "Step 3 model exported", "Step 3 processing time",
-                # Step 4 columns
-                "Step 4 complete", "Step 4 web published", "Sketchfab URL",
-                "Step 4 high-res exported", "Step 4 processing time",
-                # General
-                "Notes"
-            ]]
-        
-        # Add new row for this model with empty values
-        new_row = [""] * len(rows[0])
-        
-        # Set initial values
+        new_row = [""] * len(headers)
         try:
-            id_index = rows[0].index("Model ID")
+            id_index = headers.index("Model ID")
             new_row[id_index] = model_id
-            
-            status_index = rows[0].index("Status")
+            status_index = headers.index("Status")
             new_row[status_index] = "Initialized"
-            
-            notes_index = rows[0].index("Notes")
-            new_row[notes_index] = "Tracking initialized"
-        except ValueError:
-            # Fallback if columns not found
-            new_row[0] = model_id
-            new_row[1] = "Initialized"
-            new_row[-1] = "Tracking initialized"
-        
+            notes_index = headers.index("Notes")
+            new_row[notes_index] = f"Tracking initialized {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        except (ValueError, IndexError) as e:
+            print(f"Error preparing new row data: {e}")
+            # Fallback if columns not found or index issue
+            new_row = [model_id, "Initialized"] + [""] * (len(headers) - 3) + [f"Tracking initialized {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"]
+            if len(new_row) < len(headers): # Pad if necessary
+                 new_row.extend([""] * (len(headers) - len(new_row)))
+            elif len(new_row) > len(headers): # Truncate if necessary
+                 new_row = new_row[:len(headers)]
+
+        # Append the new row to the existing data (or just after header if no data)
         rows.append(new_row)
         
         # Write the updated data
-        with open(tracking_file, 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerows(rows)
-    
+        try:
+            with open(tracking_file, 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerows(rows)
+            print(f"Added model '{model_id}' to tracking file.")
+        except Exception as e:
+            print(f"Error: Could not write new model row to {tracking_file}: {e}")
+            
     return tracking_file
+
 
 def update_tracking(model_id, data):
     """Update tracking file with new data for the specified model."""
     tracking_file = get_tracking_file()
     
-    # Initialize tracking if file doesn't exist
+    # Initialize tracking if file doesn't exist or is empty
     if not os.path.exists(tracking_file):
-        initialize_tracking(model_id)
+        initialize_tracking(model_id) # This ensures header exists
     
-    # Read existing data
     rows = []
-    with open(tracking_file, 'r', newline='') as csvfile:
-        reader = csv.reader(csvfile)
-        rows = list(reader)
-    
-    if len(rows) == 0:
-        # Initialize with header if file is empty
-        rows = [["Model ID", "Status", "Step 0 complete", "Step 1 complete", 
-               "Step 1 start time", "Step 1 end time", "Step 1 processing time (s)", 
-               "Aligned cameras", "Total cameras", "PSX file", "Report file",
-               "Step 1 error time", "Notes"]]
-    
-    header = rows[0]
+    header = []
+    try:
+        with open(tracking_file, 'r', newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            rows = list(reader)
+            if rows:
+                header = rows[0]
+            else: # If file exists but is empty
+                 initialize_tracking(model_id) # Re-initialize to get header
+                 # Reread after initialization
+                 with open(tracking_file, 'r', newline='') as csvfile:
+                      reader = csv.reader(csvfile)
+                      rows = list(reader)
+                      if rows:
+                           header = rows[0]
+
+    except Exception as e:
+        print(f"Error reading tracking file {tracking_file} before update: {e}. Attempting to initialize.")
+        initialize_tracking(model_id) # Attempt to create/fix it
+        # Reread after initialization attempt
+        try:
+            with open(tracking_file, 'r', newline='') as csvfile:
+                 reader = csv.reader(csvfile)
+                 rows = list(reader)
+                 if rows:
+                     header = rows[0]
+        except Exception as e2:
+             print(f"Error: Could not read tracking file even after initialization: {e2}. Update aborted.")
+             return tracking_file # Return path, but update failed
+
+    if not header:
+        print(f"Error: Tracking file {tracking_file} has no header. Update aborted.")
+        return tracking_file
+
     model_row_index = -1
+    id_index = -1
+    
+    # Find the Model ID column index
+    try:
+        id_index = header.index("Model ID")
+    except ValueError:
+        print(f"Error: 'Model ID' column missing in header of {tracking_file}. Update aborted.")
+        return tracking_file
     
     # Find the row for this model_id
-    try:
-        id_index = header.index("Model ID")
-        for i, row in enumerate(rows[1:], 1):
-            if row and id_index < len(row) and row[id_index] == model_id:
-                model_row_index = i
-                break
-    except ValueError:
-        # If Model ID column doesn't exist, something is wrong with the file
-        # Recreate the header
-        header = ["Model ID", "Status", "Step 0 complete", "Step 1 complete", 
-               "Step 1 start time", "Step 1 end time", "Step 1 processing time (s)", 
-               "Aligned cameras", "Total cameras", "PSX file", "Report file",
-               "Step 1 error time", "Notes"]
-        rows[0] = header
-    
-    # If model doesn't exist in the file, add a new row
+    for i, row in enumerate(rows):
+        if i == 0: continue # Skip header row
+        if row and len(row) > id_index and row[id_index] == model_id:
+            model_row_index = i
+            break
+            
+    # If model doesn't exist in the file, add a new row using initialize logic
     if model_row_index == -1:
-        new_row = [""] * len(header)
+        print(f"Model '{model_id}' not found in tracking file. Adding it now.")
+        initialize_tracking(model_id) # Add the row
+        # Reread file to get the newly added row
         try:
-            id_index = header.index("Model ID")
-            new_row[id_index] = model_id
-        except ValueError:
-            # If Model ID column doesn't exist, add it
-            header.insert(0, "Model ID")
-            new_row = [""] * len(header)
-            new_row[0] = model_id
-            rows[0] = header
-        
-        rows.append(new_row)
-        model_row_index = len(rows) - 1
-    
+             with open(tracking_file, 'r', newline='') as csvfile:
+                  reader = csv.reader(csvfile)
+                  rows = list(reader)
+                  if rows:
+                      header = rows[0] # Reconfirm header
+                  # Find the new row index
+                  for i, row in enumerate(rows):
+                      if i == 0: continue
+                      if row and len(row) > id_index and row[id_index] == model_id:
+                           model_row_index = i
+                           break
+        except Exception as e:
+             print(f"Error rereading tracking file after adding model: {e}. Update may be incomplete.")
+             
+        if model_row_index == -1: # If still not found after adding
+             print(f"Error: Failed to add or find model '{model_id}' row after initialization. Update aborted.")
+             return tracking_file
+
     # Update values in the model's row
+    updated = False
+    current_row = rows[model_row_index]
     for key, value in data.items():
         try:
-            index = header.index(key)
-            if model_row_index < len(rows):
-                while len(rows[model_row_index]) <= index:
-                    rows[model_row_index].append("")
-                rows[model_row_index][index] = value
+            col_index = header.index(key)
+            # Ensure row has enough columns, pad with empty strings if necessary
+            while len(current_row) <= col_index:
+                current_row.append("")
+            # Update only if value is different
+            if current_row[col_index] != str(value):
+                 current_row[col_index] = str(value) # Ensure value is string
+                 updated = True
         except ValueError:
-            # If key not in header, add it
+            # If key not in header, add it as a new column
             header.append(key)
-            rows[0] = header
+            rows[0] = header # Update header row
+            # Add empty value for this new column to all previous rows
             for i in range(1, len(rows)):
-                rows[i].append("")
-            if model_row_index < len(rows):
-                rows[model_row_index][len(header) - 1] = value
-    
-    # Ensure model ID is set
-    try:
-        id_index = header.index("Model ID")
-        if model_row_index < len(rows):
-            rows[model_row_index][id_index] = model_id
-    except ValueError:
-        # If Model ID column doesn't exist, add it
-        header.insert(0, "Model ID")
-        rows[0] = header
-        for i in range(1, len(rows)):
-            rows[i].insert(0, "")
-        if model_row_index < len(rows):
-            rows[model_row_index][0] = model_id
-    
-    # Ensure parent directory exists
-    ensure_parent_directory(tracking_file)
-    
-    # Write updated data
-    with open(tracking_file, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerows(rows)
+                 rows[i].append("")
+            # Add the value to the current row's new column
+            current_row.append(str(value))
+            print(f"Added new column '{key}' to tracking file.")
+            updated = True
+            
+    # Write updated data only if changes were made
+    if updated:
+        try:
+            # Ensure parent directory exists (redundant check, but safe)
+            ensure_parent_directory(tracking_file)
+            
+            with open(tracking_file, 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerows(rows)
+            # print(f"Updated tracking data for model '{model_id}'.") # Reduce verbosity
+        except Exception as e:
+            print(f"Error writing updates to tracking file {tracking_file}: {e}")
     
     return tracking_file
+
 
 def get_transect_status(model_id):
     """Get the current status for a model from the tracking file."""
     tracking_file = get_tracking_file()
     
     if not os.path.exists(tracking_file):
-        return {}
+        return {} # Return empty dict if file doesn't exist
     
-    with open(tracking_file, 'r', newline='') as csvfile:
-        reader = csv.reader(csvfile)
-        rows = list(reader)
-    
-    if len(rows) < 2:
+    try:
+        with open(tracking_file, 'r', newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            rows = list(reader)
+    except Exception as e:
+        print(f"Error reading tracking file {tracking_file} for status check: {e}")
         return {}
+
+    if len(rows) < 2: # Need header + at least one data row
+        return {} 
     
     header = rows[0]
+    id_index = -1
     
-    # Find the row for this model_id
+    # Find the Model ID column index
     try:
         id_index = header.index("Model ID")
-        for row in rows[1:]:
-            if row and id_index < len(row) and row[id_index] == model_id:
-                # Create dictionary of column names to values
-                status = {}
-                for i in range(len(header)):
-                    if i < len(row):
-                        status[header[i]] = row[i]
-                return status
     except ValueError:
-        pass
-    
+        print(f"Warning: 'Model ID' column missing in header of {tracking_file} during status check.")
+        return {}
+        
+    # Find the row for this model_id
+    for row in rows[1:]:
+        if row and len(row) > id_index and row[id_index] == model_id:
+            # Create dictionary of column names to values
+            status = {}
+            for i, col_name in enumerate(header):
+                 # Ensure row has a value for this column, default to empty string
+                 status[col_name] = row[i] if i < len(row) else ""
+            return status
+            
     # If we get here, the model wasn't found
     return {}
 
+
 # Create all directories on import
-create_directories() 
+create_directories()
+print(f"Configuration loaded for project: {PROJECT_NAME} in {PROJECT_DIR}")
+print(f"Tracking file location: {get_tracking_file()}")
+# Optionally print all defined directories
+# print("Defined directories:")
+# for key, path in DIRECTORIES.items():
+#     print(f"  {key}: {path}") 

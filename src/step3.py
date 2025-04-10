@@ -26,7 +26,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(os.path.join(DIRECTORIES["reports"], f"step3_{PROJECT_NAME}.log")),
+        logging.FileHandler(os.path.join(DIRECTORIES["logs"], f"step3_{PROJECT_NAME}.log")),
         logging.StreamHandler()
     ]
 )

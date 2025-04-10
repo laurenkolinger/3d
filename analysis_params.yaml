@@ -3,40 +3,35 @@
 
 # Project Information
 project:
-  name: "TCRMP_3D_Example"
+  name: "3D_sample_project_10april25_1_thruStep1"
   notes: |
-    Example project demonstrating the TCRMP 3D processing workflow.
-    This is a template for setting up new projects.
+    running on big proxy files from the cinema raw encoding process. using various panama and trmp transect.
 
 # Configuration file path - points to project-specific analysis_params.yaml
-config_path: "examples/sample_project/analysis_params.yaml"
+config_path: "examples/sample_project_10april25_merged/analysis_params.yaml"
 
 # Directory Configuration
 directories:
-  video_source: "examples/sample_project/video_source"  # Directory containing MP4/MOV files
-  base: "examples/sample_project"                       # Project base directory
-  data: "examples/sample_project/data"                  # Will be created in project directory
-  output: "examples/sample_project/output"              # Will be created in project directory
-  adobe_presets: "presets/lightroom"                    # Adobe Lightroom presets
-  metashape_presets: "presets/premiere"                 # Metashape presets
-  scripts: "src"                                        # Location of processing scripts
-  config: "src/config.py"                               # Location of config file
-  final_outputs: "examples/sample_project/final_outputs" # Location for final outputs
-  psx_input: "examples/sample_project/psx_input"         # Input PSX files
-  reports: "examples/sample_project/reports"             # Reports directory for PDF output
-  frames: "examples/sample_project/frames"               # Extracted frames directory
-  psx_output: "examples/sample_project/psx_output"       # Output PSX directory for final projects
-  models: "examples/sample_project/models"               # 3D model exports
-  orthomosaics: "examples/sample_project/orthomosaics"   # Orthomosaic exports
-
+  video_source: "examples/sample_project_10april25_merged/video_source"  # Directory containing MP4/MOV files
+  base: "examples/sample_project_10april25_merged"                       # Project base directory
+  data: "examples/sample_project_10april25_merged/data"                  # Will be created in project directory
+  output: "examples/sample_project_10april25_merged/output"              # Main output directory for all generated files
+  adobe_presets: "presets/lightroom"          # Adobe Lightroom presets
+  metashape_presets: "presets/premiere"       # Metashape presets
+  scripts: "src"                              # Location of processing scripts
+  config: "src/config.py"                     # Location of config file
+  
 # Processing Parameters
 processing:
   # Frame Extraction (step0.py)
-  frames_per_transect: 100  # Number of frames to extract per model
-  extraction_rate: 0.5      # 1.0 = all frames, 0.5 = every other frame
+  frames_per_transect: 100  # Number of frames to extract per model (1200)
+  # extraction_rate: 0.5      # 1.0 = all frames, 0.5 = every other frame
+                            # Rate for extracting frames if frames_per_transect is 0.
+                            # Determines the interval: 1.0 = every frame, 0.5 = every 2nd frame, 0.25 = every 4th frame etc.
+                            # Ignored if frames_per_transect > 0 (linspace used instead).
   
   # Initial 3D Processing (step1.py)
-  chunk_size: 400  # Maximum number of frames per chunk
+  chunk_size: 1200  # Maximum number of frames per chunk (1200)
   use_gpu: true    # Whether to use GPU for processing
   max_chunks_per_psx: 1     # Maximum number of chunks per PSX file for batch processing
   metashape:
@@ -49,7 +44,7 @@ processing:
       # Photo matching parameters
       keypoint_limit: 40000           # Maximum number of keypoints per image
       tiepoint_limit: 4000            # Maximum number of tie points per image pair
-      downscale: 3                    # Downscale factor for photos (1=highest quality, no downscaling)
+      downscale: 1                    # Downscale factor for photos (1=highest quality, no downscaling)
       generic_preselection: true      # Use image content for pre-selecting image pairs
       reference_preselection: true    # Use image metadata for pre-selecting image pairs  
       filter_stationary_points: false # Filter stationary points that don't contribute to the geometry
@@ -59,15 +54,15 @@ processing:
       adaptive_fitting: true          # Adaptively fit camera parameters based on estimated reliability
       
       # Depth map parameters
-      depth_downscale: 4              # Downscale factor for depth maps (4=medium quality)
-      depth_filter_mode: "AggressiveFiltering" # Depth map filtering mode: NoFiltering, MildFiltering, ModerateFiltering, AggressiveFiltering
+      depth_downscale: 4             # Downscale factor for depth maps (1= no downscale, 4=medium quality) (1)
+      depth_filter_mode: "MildFiltering" # Depth map filtering mode: NoFiltering, MildFiltering, ModerateFiltering, AggressiveFiltering
       
       # Model building parameters
       surface_type: "Arbitrary"        # Surface type: Arbitrary (freeform) or HeightField (flat surface)
       interpolation: "EnabledInterpolation" # Interpolation mode: DisabledInterpolation, EnabledInterpolation, Extrapolated
-      face_count: "LowFaceCount"      # Target face count: LowFaceCount, MediumFaceCount, HighFaceCount, CustomFaceCount
+      face_count: "LowFaceCount"      # Target face count: LowFaceCount, MediumFaceCount, HighFaceCount, CustomFaceCount (MediumFaceCount)
       volumetric_masks: false          # Use volumetric masking
-      vertex_colors: true              # Calculate vertex colors
+      vertex_colors: false              # Calculate vertex colors
       
       # Model smoothing
       smooth_strength: 1               # Smoothing strength (1-10, higher=smoother)
@@ -76,8 +71,8 @@ processing:
       
       # UV mapping
       mapping_mode: "GenericMapping"   # UV mapping mode: GenericMapping, OrthophotoMapping, AdaptiveOrthophotoMapping, SphericalMapping, CameraMapping
-      texture_size: 1024              # Texture size in pixels (power of 2) (16384)
-      page_count: 1                    # Number of texture pages (4)
+      texture_size: 16384              # Texture size in pixels (power of 2) (16384)
+      page_count: 4                    # Number of texture pages (4)
       
       # Texture building
       texture_type: "DiffuseMap"       # Texture type: DiffuseMap, NormalMap, OcclusionMap
@@ -87,10 +82,11 @@ processing:
       enable_gpu: true                # Use GPU for texture generation
       relaxed_precision: true          # Use relaxed precision for texture generation
   
+  ######## STOP HERE #########
   # Chunk Management (step2.py)
   chunk_management:
-    psx_startdir: "examples/sample_project/psx_input"         # Starting directory for PSX files
-    psx_finaldir: "examples/sample_project/psx_output"        # Final directory for PSX files
+    psx_startdir: "examples/sample_project_10april25/output"         # Starting directory for PSX files
+    psx_finaldir: "examples/sample_project_10april25/output"        # Final directory for PSX files
     chunk_quality:
       min_cameras: 0                 # Minimum number of aligned cameras for a quality chunk
       min_alignment_percentage: 0    # Minimum percentage of aligned cameras for a quality chunk
