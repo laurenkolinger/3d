@@ -12,6 +12,8 @@ import datetime
 import math
 import pandas as pd
 import time
+import sys
+import traceback
 from config import (
     DIRECTORIES,
     PROJECT_NAME,
@@ -21,6 +23,32 @@ from config import (
     update_tracking,
     get_transect_status
 )
+
+# Print all directory paths for debugging
+print("DEBUG: Directory paths:")
+for key, path in DIRECTORIES.items():
+    print(f"  {key}: {path}")
+    # Check if directory exists
+    if os.path.exists(path):
+        print(f"    [EXISTS]")
+    else:
+        print(f"    [DOES NOT EXIST]")
+        try:
+            os.makedirs(path, exist_ok=True)
+            print(f"    [CREATED]")
+        except Exception as e:
+            print(f"    [FAILED TO CREATE: {str(e)}]")
+
+# Try to create each directory explicitly
+print("DEBUG: Attempting to create all directories:")
+for key, path in DIRECTORIES.items():
+    try:
+        print(f"Creating directory: {path}")
+        os.makedirs(path, exist_ok=True)
+        print(f"  Success!")
+    except Exception as e:
+        print(f"  Error creating {path}: {str(e)}")
+        traceback.print_exc()
 
 # Configure logging
 logging.basicConfig(
@@ -34,6 +62,69 @@ logging.basicConfig(
 
 # Maximum number of chunks per PSX file
 MAX_CHUNKS_PER_PSX = PARAMS['processing'].get('max_chunks_per_psx', 5)
+
+def enumerate_gpus():
+    """
+    Enumerate available GPUs and log their details.
+    
+    Returns:
+        list: List of available GPU devices
+    """
+    logging.info("Enumerating available GPU devices...")
+    gpu_devices = Metashape.app.enumGPUDevices()
+    
+    if not gpu_devices:
+        logging.warning("No GPU devices detected by Metashape")
+        return []
+        
+    for i, device in enumerate(gpu_devices):
+        if isinstance(device, dict):
+            device_info = []
+            for key, value in device.items():
+                device_info.append(f"{key}: {value}")
+            logging.info(f"GPU {i}: {', '.join(device_info)}")
+        else:
+            logging.info(f"GPU {i}: {device}")
+    
+    return gpu_devices
+
+def setup_gpu(gpu_devices=None):
+    """
+    Configure GPU processing based on available devices.
+    
+    Args:
+        gpu_devices (list, optional): List of available GPU devices
+        
+    Returns:
+        bool: Whether GPU processing was successfully enabled
+    """
+    if not USE_GPU:
+        logging.info("GPU processing disabled in config")
+        return False
+        
+    # Enumerate GPUs if not provided
+    if gpu_devices is None:
+        gpu_devices = enumerate_gpus()
+    
+    if not gpu_devices:
+        logging.warning("GPU processing requested but no devices available")
+        return False
+    
+    # Set GPU mask to enable all available GPUs
+    # Each bit in the mask corresponds to a GPU
+    gpu_mask = 0
+    for i in range(len(gpu_devices)):
+        gpu_mask |= (1 << i)  # Set the corresponding bit
+    
+    Metashape.app.gpu_mask = gpu_mask
+    
+    # Enable GPU for depth maps and mesh generation
+    Metashape.app.cpu_enable = False
+    
+    logging.info(f"GPU acceleration enabled with mask: {gpu_mask} (binary: {bin(gpu_mask)})")
+    logging.info(f"Using {len(gpu_devices)} GPU device(s)")
+    
+    return True
 
 def process_transect(transect_id, chunk, doc):
     """
@@ -50,10 +141,9 @@ def process_transect(transect_id, chunk, doc):
     try:
         start_time = datetime.datetime.now()
         
-        # Set up processing parameters
-        if USE_GPU:
-            Metashape.app.gpu_mask = 1  # Use first GPU device
-            logging.info("GPU acceleration enabled")
+        # Set up GPU processing
+        gpu_devices = enumerate_gpus()
+        gpu_enabled = setup_gpu(gpu_devices)
         
         # Set chunk label
         chunk.label = transect_id
@@ -64,9 +154,9 @@ def process_transect(transect_id, chunk, doc):
             raise ValueError(f"Frames directory not found: {frames_dir}")
         
         # Get list of frame files
-        frame_files = [f for f in os.listdir(frames_dir) if f.endswith('.jpg')]
+        frame_files = [f for f in os.listdir(frames_dir) if f.lower().endswith(('.jpg', '.jpeg', '.tif', '.tiff'))]
         if not frame_files:
-            raise ValueError(f"No frame files found in {frames_dir}")
+            raise ValueError(f"No image files found in {frames_dir}")
         
         # Add photos to chunk
         logging.info(f"Adding {len(frame_files)} photos for model {transect_id}")
@@ -83,6 +173,10 @@ def process_transect(transect_id, chunk, doc):
             filter_stationary_points=METASHAPE_DEFAULTS["filter_stationary_points"]
         )
         chunk.alignCameras(adaptive_fitting=METASHAPE_DEFAULTS["adaptive_fitting"])
+        
+        # Save after photo alignment
+        logging.info(f"Saving progress after alignment for model {transect_id}")
+        doc.save()
         
         # Attempt to align any unaligned cameras
         unaligned_cameras = [camera for camera in chunk.cameras if not camera.transform]
@@ -112,6 +206,10 @@ def process_transect(transect_id, chunk, doc):
         f3.init(chunk, Metashape.TiePoints.Filter.ProjectionAccuracy)
         f3.removePoints(METASHAPE_DEFAULTS["projection_accuracy"])
         
+        # Save after point filtering
+        logging.info(f"Saving progress after point filtering for model {transect_id}")
+        doc.save()
+        
         # Rotate coordinate system to bounding box
         logging.info("Rotating coordinate system to bounding box")
         R = chunk.region.rot     # Bounding box rotation matrix
@@ -135,8 +233,15 @@ def process_transect(transect_id, chunk, doc):
         logging.info(f"Building depth maps for model {transect_id}")
         chunk.buildDepthMaps(
             downscale=METASHAPE_DEFAULTS["depth_downscale"],
-            filter_mode=getattr(Metashape, METASHAPE_DEFAULTS["depth_filter_mode"])
+            filter_mode=getattr(Metashape, METASHAPE_DEFAULTS["depth_filter_mode"]),
+            reuse_depth=False,
+            max_neighbors=METASHAPE_DEFAULTS.get("max_neighbors", 16),
+            subdivide_task=True  # Split into subtasks for better GPU utilization
         )
+        
+        # Save after depth maps
+        logging.info(f"Saving progress after depth maps for model {transect_id}")
+        doc.save()
         
         # Build model
         logging.info(f"Building model for {transect_id}")
@@ -145,18 +250,25 @@ def process_transect(transect_id, chunk, doc):
             surface_type=getattr(Metashape, METASHAPE_DEFAULTS["surface_type"]),
             face_count=getattr(Metashape, METASHAPE_DEFAULTS["face_count"]),
             interpolation=getattr(Metashape, METASHAPE_DEFAULTS["interpolation"]),
-            vertex_colors=METASHAPE_DEFAULTS["vertex_colors"]
+            vertex_colors=METASHAPE_DEFAULTS["vertex_colors"],
+            subdivide_task=True  # Split into subtasks for better GPU utilization
         )
         
         # Smooth model
         logging.info(f"Smoothing model for {transect_id}")
-        chunk.smoothModel(strength=METASHAPE_DEFAULTS["smooth_strength"])
+        chunk.smoothModel(
+            strength=METASHAPE_DEFAULTS["smooth_strength"],
+            apply_to_selection=False,
+            fix_borders=METASHAPE_DEFAULTS.get("fix_borders", False),
+            preserve_edges=METASHAPE_DEFAULTS.get("preserve_edges", False)
+        )
         
         # Build UV
         logging.info(f"Building UV for model {transect_id}")
         chunk.buildUV(
             mapping_mode=getattr(Metashape, METASHAPE_DEFAULTS["mapping_mode"]),
-            texture_size=METASHAPE_DEFAULTS["texture_size"]
+            texture_size=METASHAPE_DEFAULTS["texture_size"],
+            page_count=METASHAPE_DEFAULTS.get("page_count", 1)
         )
         
         # Build texture
@@ -165,7 +277,9 @@ def process_transect(transect_id, chunk, doc):
             texture_size=METASHAPE_DEFAULTS["texture_size"],
             texture_type=getattr(Metashape.Model, METASHAPE_DEFAULTS["texture_type"]),
             blending_mode=getattr(Metashape, METASHAPE_DEFAULTS["blending_mode"]),
-            enable_gpu=METASHAPE_DEFAULTS["enable_gpu"]
+            enable_gpu=True,  # Force GPU usage for texture generation
+            ghosting_filter=METASHAPE_DEFAULTS.get("ghosting_filter", True),
+            fill_holes=METASHAPE_DEFAULTS.get("fill_holes", True)
         )
         
         end_time = datetime.datetime.now()
@@ -214,7 +328,14 @@ def process_batch(transects, batch_num, timestamp):
     
     # Create PSX path for this batch
     os.makedirs(DIRECTORIES["psx_input"], exist_ok=True)
-    psx_path = os.path.join(DIRECTORIES["psx_input"], f"psx_{batch_num}_{timestamp}.psx")
+    
+    # Use transect name as filename if only 1 transect per PSX
+    if len(transects) == 1 and MAX_CHUNKS_PER_PSX == 1:
+        psx_filename = f"{transects[0]}_{timestamp}.psx"
+    else:
+        psx_filename = f"psx_{batch_num}_{timestamp}.psx"
+    
+    psx_path = os.path.join(DIRECTORIES["psx_input"], psx_filename)
     logging.info(f"Processing batch {batch_num} with {len(transects)} transects to {psx_path}")
     
     # Create a new document for this batch
