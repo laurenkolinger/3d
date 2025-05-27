@@ -14,6 +14,7 @@ import logging
 import subprocess
 import tempfile
 import shutil
+import re
 from config import (
     VIDEO_SOURCE_DIRECTORY,
     DIRECTORIES,
@@ -42,8 +43,8 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
     Args:
         video_path (str): Path to the video file
         output_dir (str): Directory to save frames
-        frames_per_transect (int): Number of frames to extract
-        video_name (str): Base name of the video file for frame naming
+        frames_per_transect (int): Number of frames to extract. Must be > 0 if called.
+        video_name (str): Base name of the video file for frame naming within output_dir
     
     Returns:
         tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
@@ -73,10 +74,20 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
     if frames_per_transect <= 0:
         raise ValueError(f"frames_per_transect must be > 0. Found {frames_per_transect}")
     if video_length_seconds <= 0:
-        raise ValueError(f"Video length must be > 0 seconds to calculate fps. Found {video_length_seconds:.2f}s")
-        
-    extract_fps = frames_per_transect / video_length_seconds
-    logging.info(f"Setting fps={extract_fps} to extract {frames_per_transect} frames from {video_length_seconds:.2f}s video")
+        # This case should ideally be handled by the caller if frames_per_transect > 0
+        logging.warning(f"Video {video_name} length is {video_length_seconds:.2f}s. Cannot calculate extraction FPS if frames are requested.")
+        # FFmpeg might handle fps=0 or fps=inf, or it might error.
+        # If frames_per_transect > 0, this combination is problematic.
+        # The calling function (process_transect) should avoid calling this if part_duration is 0 and frames are requested.
+        # If it's called with frames_per_transect > 0 and video_length_seconds <=0, let ffmpeg try or fail.
+        # For safety, if frames are requested from a zero-length video, it's an issue.
+        if frames_per_transect > 0:
+             raise ValueError(f"Video length must be > 0 seconds to extract {frames_per_transect} frames. Found {video_length_seconds:.2f}s for {video_name}")
+        extract_fps = 0 # Or handle as error, though frames_per_transect should be 0 here.
+    else:
+        extract_fps = frames_per_transect / video_length_seconds
+    
+    logging.info(f"Setting fps={extract_fps} to extract {frames_per_transect} frames from {video_length_seconds:.2f}s video for {video_name}")
     
     # Extract frames using FFmpeg with TIFF format
     logging.info(f"Extracting frames using TIFF format with rgb24")
@@ -523,116 +534,181 @@ def extract_frames(video_path, output_dir, frames_per_transect, video_name):
     cap.release()
     return frames_extracted, extracted_frame_paths, video_length_seconds, total_frames
 
-def process_video(video_path):
+def process_transect(transect_id, video_paths_for_transect):
     """
-    Process a single video file.
+    Process a single transect, which may consist of one or more video files (parts).
     
     Args:
-        video_path (str): Path to the video file
+        transect_id (str): The base identifier for the transect (e.g., TCRMP20240215_3ddemo_FLC_T5)
+        video_paths_for_transect (list[str]): List of paths to video files for this transect, sorted by part.
         
     Returns:
         str, bool: Transect ID and success status
     """
-    # Get video filename without extension
-    video_name = os.path.splitext(os.path.basename(video_path))[0]
+    output_dir_final = os.path.join(DIRECTORIES["frames"], transect_id)
     
-    # Create output directory for this video
-    output_dir = os.path.join(DIRECTORIES["frames"], video_name)
+    initialize_tracking(transect_id) 
     
-    # Initialize tracking file
-    initialize_tracking(video_name)
-    
-    # Check if already processed
-    status = get_transect_status(video_name)
+    status = get_transect_status(transect_id)
     if status.get("Step 0 complete", "False") == "True":
-        logging.info(f"Video {video_name} already processed, skipping...")
-        return video_name, True
-    
+        logging.info(f"Transect {transect_id} already processed, skipping...")
+        return transect_id, True
+        
     try:
         start_time = datetime.datetime.now()
-        logging.info(f"Starting frame extraction for {video_name}")
-        
-        # For highest quality, use TIFF extraction method
-        frames_extracted, frame_paths, video_length, total_frames = extract_frames_ffmpeg(
-            video_path,
-            output_dir,
-            FRAMES_PER_TRANSECT,
-            video_name
-        )
-        
-        # Method 2: Lossless PNG frames
-        # frames_extracted, frame_paths, video_length, total_frames = extract_frames_ffmpeg_png(
-        #     video_path,
-        #     output_dir, 
-        #     FRAMES_PER_TRANSECT,
-        #     video_name
-        # )
-        
+        logging.info(f"Starting frame extraction for transect {transect_id} with {len(video_paths_for_transect)} part(s)")
+
+        part_details = [] 
+        total_video_length_seconds_all_parts = 0
+        grand_total_video_frames_all_parts = 0
+
+        for video_path_part in video_paths_for_transect:
+            logging.info(f"Getting properties for part: {video_path_part}")
+            cap = cv2.VideoCapture(video_path_part)
+            if not cap.isOpened():
+                # Log specific part failure and continue if possible, or raise
+                logging.error(f"Could not open video file part: {video_path_part} for transect {transect_id}")
+                # Option: skip this part or raise error for whole transect
+                raise ValueError(f"Could not open video file part: {video_path_part} for transect {transect_id}")
+
+            part_total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            part_fps = cap.get(cv2.CAP_PROP_FPS)
+            cap.release()
+            
+            part_duration_seconds = 0
+            if part_fps > 0 and part_total_frames > 0 : # Ensure both are positive
+                part_duration_seconds = part_total_frames / part_fps
+            else:
+                logging.warning(f"Video part {video_path_part} has invalid properties: FPS {part_fps}, Total Frames {part_total_frames}. Duration set to 0.")
+
+            if part_duration_seconds <= 0:
+                logging.warning(f"Video part {video_path_part} has calculated duration of {part_duration_seconds:.2f}s.")
+            
+            total_video_length_seconds_all_parts += part_duration_seconds
+            grand_total_video_frames_all_parts += part_total_frames
+            part_basename = os.path.splitext(os.path.basename(video_path_part))[0]
+            part_details.append({
+                "path": video_path_part, 
+                "duration": part_duration_seconds, 
+                "total_frames": part_total_frames,
+                "basename": part_basename
+            })
+
+        if FRAMES_PER_TRANSECT <= 0:
+            logging.info(f"FRAMES_PER_TRANSECT is {FRAMES_PER_TRANSECT}. No frames will be extracted for transect {transect_id}.")
+            update_tracking(transect_id, {
+                "Status": "No frames requested",
+                "Step 0 complete": "True",
+                "Video Length (s)": f"{total_video_length_seconds_all_parts:.2f}",
+                "Total Video Frames": str(grand_total_video_frames_all_parts),
+                "Frames Extracted": "0",
+                "Video Source": ", ".join(video_paths_for_transect),
+                "Extraction Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Step 0 start time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "Step 0 end time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Step 0 processing time (s)": str((datetime.datetime.now() - start_time).total_seconds()),
+                "Frames directory": output_dir_final,
+                "Notes": f"FRAMES_PER_TRANSECT set to {FRAMES_PER_TRANSECT}. No frames extracted."
+            })
+            os.makedirs(output_dir_final, exist_ok=True) # Create directory even if no frames
+            return transect_id, True
+
+        if total_video_length_seconds_all_parts <= 0:
+             error_msg = f"Total video length for transect {transect_id} is zero or negative ({total_video_length_seconds_all_parts:.2f}s). Cannot extract frames."
+             logging.error(error_msg)
+             raise ValueError(error_msg)
+
+        os.makedirs(output_dir_final, exist_ok=True)
+        global_frame_output_counter = 1
+        cumulative_frames_extracted_count = 0
+        all_final_frame_paths = [] # To store paths of successfully moved frames for logging/verification
+
+        for idx, part_info in enumerate(part_details):
+            part_path = part_info["path"]
+            part_duration = part_info["duration"]
+            part_basename = part_info["basename"]
+            
+            frames_to_extract_for_this_part = 0
+            if part_duration > 0 and total_video_length_seconds_all_parts > 0: # Ensure part_duration is positive for calc
+                frames_to_extract_for_this_part = round(FRAMES_PER_TRANSECT * (part_duration / total_video_length_seconds_all_parts))
+            
+            if frames_to_extract_for_this_part == 0 and part_duration > 0:
+                 # If rounding results in 0 frames for a part that has some duration,
+                 # and we are aiming to extract frames overall, consider extracting at least one.
+                 # This is a policy choice. For now, stick to strict proportionality.
+                 # If FRAMES_PER_TRANSECT is very low, some parts might get 0.
+                 logging.info(f"Part {part_path} (duration {part_duration:.2f}s) allocated 0 frames due to rounding/proportionality. Total requested: {FRAMES_PER_TRANSECT}.")
+
+
+            if frames_to_extract_for_this_part <= 0:
+                logging.info(f"Skipping frame extraction for part {part_path} as {frames_to_extract_for_this_part} frames are to be extracted.")
+                continue
+
+            logging.info(f"Extracting {frames_to_extract_for_this_part} frames from part {part_path} (duration: {part_duration:.2f}s) for transect {transect_id}")
+            
+            temp_part_output_dir = tempfile.mkdtemp(prefix=f"{part_basename}_frames_")
+            
+            try:
+                num_actually_extracted, temp_frame_paths, _, _ = extract_frames_ffmpeg(
+                    part_path,
+                    temp_part_output_dir,
+                    frames_to_extract_for_this_part,
+                    part_basename 
+                )
+
+                if num_actually_extracted > 0:
+                    temp_frame_paths.sort() 
+                    
+                    for src_frame_path in temp_frame_paths:
+                        file_extension = os.path.splitext(src_frame_path)[1]
+                        # Ensure target_frame_name uses transect_id for global naming
+                        target_frame_name = f"{transect_id}_{global_frame_output_counter:05d}{file_extension}"
+                        target_frame_path_final = os.path.join(output_dir_final, target_frame_name)
+                        
+                        shutil.move(src_frame_path, target_frame_path_final)
+                        all_final_frame_paths.append(target_frame_path_final)
+                        global_frame_output_counter += 1
+                
+                cumulative_frames_extracted_count += num_actually_extracted
+            
+            finally:
+                shutil.rmtree(temp_part_output_dir)
+
         end_time = datetime.datetime.now()
         processing_time = (end_time - start_time).total_seconds()
         extraction_timestamp = end_time.strftime("%Y-%m-%d %H:%M:%S")
         
-        # Update tracking file
-        update_tracking(video_name, {
+        update_tracking(transect_id, {
             "Status": "Frames extracted",
             "Step 0 complete": "True",
-            "Video Length (s)": f"{video_length:.2f}",
-            "Total Video Frames": str(total_frames),
-            "Frames Extracted": str(frames_extracted),
-            "Video Source": video_path,
+            "Video Length (s)": f"{total_video_length_seconds_all_parts:.2f}",
+            "Total Video Frames": str(grand_total_video_frames_all_parts),
+            "Frames Extracted": str(cumulative_frames_extracted_count),
+            "Video Source": ", ".join(video_paths_for_transect), 
             "Extraction Timestamp": extraction_timestamp,
             "Step 0 start time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
             "Step 0 end time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
-            "Step 0 processing time (s)": str(processing_time),
-            "Frames directory": output_dir,
-            "Notes": f"Extracted {frames_extracted} high quality frames from {total_frames} total frames ({video_length:.2f}s video)"
+            "Step 0 processing time (s)": f"{processing_time:.2f}",
+            "Frames directory": output_dir_final,
+            "Notes": f"Extracted {cumulative_frames_extracted_count} frames from {grand_total_video_frames_all_parts} total frames across {len(video_paths_for_transect)} part(s) ({total_video_length_seconds_all_parts:.2f}s total video duration)."
         })
         
-        logging.info(f"Successfully extracted {frames_extracted} frames from {video_name} (duration: {video_length:.2f}s) in {processing_time:.1f} seconds")
-        return video_name, True
+        logging.info(f"Successfully extracted {cumulative_frames_extracted_count} frames for transect {transect_id} (total duration: {total_video_length_seconds_all_parts:.2f}s) in {processing_time:.1f} seconds. Frames saved to {output_dir_final}")
+        return transect_id, True
         
     except Exception as e:
         error_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        error_msg = f"Error processing {video_name}: {str(e)}"
-        logging.error(error_msg)
+        current_transect_id_for_error = transect_id if 'transect_id' in locals() else "UnknownTransect"
+        error_msg = f"Error processing transect {current_transect_id_for_error}: {str(e)}"
+        logging.error(error_msg, exc_info=True) 
         
-        update_tracking(video_name, {
+        update_tracking(current_transect_id_for_error, {
             "Status": "Error in frame extraction",
             "Step 0 complete": "False",
             "Step 0 error time": error_time,
             "Notes": f"Error: {str(e)}"
         })
-        return video_name, False
-
-# def create_frame_summary(): # Removed function definition
-#     """Create a summary of extracted frames for all transects."""
-#     # Use data_root directory which user is expected to create
-#     summary_path = os.path.join(DIRECTORIES["data_root"], "frame_extraction_summary.csv")
-#     
-#     # Get all transect directories
-#     frames_dir = DIRECTORIES["frames"]
-#     transect_dirs = []
-#     if os.path.exists(frames_dir):
-#         transect_dirs = [d for d in os.listdir(frames_dir) 
-#                         if os.path.isdir(os.path.join(frames_dir, d))]
-#     
-#     # Write summary to CSV
-#     with open(summary_path, 'w') as f:
-#         f.write("Transect ID,Video Length (s),Total Frames,Frames Extracted,Extraction Date,Processing Time (s),Status\n")
-#         
-#         for transect_id in transect_dirs:
-#             status = get_transect_status(transect_id)
-#             frames = status.get("Frames Extracted", "0")
-#             total_frames = status.get("Total Video Frames", "0")
-#             video_length = status.get("Video Length (s)", "0")
-#             date = status.get("Extraction Timestamp", status.get("Step 0 end time", ""))
-#             processing_time = status.get("Step 0 processing time (s)", "0")
-#             complete = status.get("Step 0 complete", "False")
-#             
-#             status_text = "Complete" if complete == "True" else "Failed"
-#             f.write(f"{transect_id},{video_length},{total_frames},{frames},{date},{processing_time},{status_text}\n")
-#     
-#     logging.info(f"Frame extraction summary saved to {summary_path}")
+        return current_transect_id_for_error, False
 
 def main():
     """Main function to process all videos in the source directory."""
@@ -641,33 +717,79 @@ def main():
     # os.makedirs(DIRECTORIES["reports"], exist_ok=True) # Removed this line causing KeyError
     
     # Get list of video files
-    video_files = []
+    video_files_paths = []
     for ext in ['.mov', '.mp4', '.MOV', '.MP4']:
-        video_files.extend(Path(VIDEO_SOURCE_DIRECTORY).glob(f"*{ext}"))
+        video_files_paths.extend(Path(VIDEO_SOURCE_DIRECTORY).glob(f"*{ext}"))
     
-    if not video_files:
+    if not video_files_paths:
         logging.error(f"No video files found in {VIDEO_SOURCE_DIRECTORY}")
         return
     
-    logging.info(f"Found {len(video_files)} video files to process")
+    logging.info(f"Found {len(video_files_paths)} video file(s) to potentially process.")
+
+    # Group videos by transect ID
+    grouped_videos = {}
+    # Regex to capture base name and part number. Example: TCRMP..._FLC_T5_1 -> (TCRMP..._FLC_T5, 1)
+    # Allows for optional _partX or _X pattern. Assumes transect ID ends with _T<number>
+    multipart_pattern = re.compile(r"^(.*_T\d+)(?:_part|_)?(\d+)$", re.IGNORECASE) 
+    # For single files that still conform to a transect naming like ..._T1 but without part numbers
+    single_transect_pattern = re.compile(r"^(.*_T\d+)$", re.IGNORECASE)
+
+    for video_path_obj in video_files_paths:
+        video_stem = video_path_obj.stem # Filename without extension
+        
+        base_name_for_group = None
+        part_number = 0 # Default for single videos or if base part is not numbered "_1"
+
+        match_multipart = multipart_pattern.match(video_stem)
+        if match_multipart:
+            base_name_for_group = match_multipart.group(1)
+            part_number = int(match_multipart.group(2))
+        else:
+            match_single_transect = single_transect_pattern.match(video_stem)
+            if match_single_transect:
+                base_name_for_group = match_single_transect.group(1)
+                # part_number remains 0, indicating it's the base or only part
+            else:
+                # Fallback: use the whole stem if no T# pattern recognized as part of base
+                # This treats any other video file as its own transect.
+                base_name_for_group = video_stem
+                # part_number remains 0
+
+        if base_name_for_group not in grouped_videos:
+            grouped_videos[base_name_for_group] = []
+        
+        # Store path as string, and part number for sorting
+        grouped_videos[base_name_for_group].append({'path': str(video_path_obj), 'part': part_number})
+
+    logging.info(f"Grouped into {len(grouped_videos)} transect(s) to process.")
     
-    # Process each video and track success
     results = []
-    for i, video_path in enumerate(video_files):
-        logging.info(f"Processing video {i+1}/{len(video_files)}: {video_path.name}")
-        transect_id, success = process_video(str(video_path))
-        results.append((transect_id, success))
+    transect_count = 0
+    for transect_id, parts_data in grouped_videos.items():
+        transect_count += 1
+        # Sort parts by part number. Part 0 (single/base) comes before numbered parts.
+        parts_data.sort(key=lambda x: x['part'])
+        
+        sorted_video_paths_for_transect = [p['path'] for p in parts_data]
+        
+        logging.info(f"Processing transect {transect_count}/{len(grouped_videos)}: {transect_id} with {len(sorted_video_paths_for_transect)} part(s): {', '.join(os.path.basename(p) for p in sorted_video_paths_for_transect)}")
+        
+        # Call the refactored processing function
+        processed_transect_id, success = process_transect(transect_id, sorted_video_paths_for_transect)
+        results.append((processed_transect_id, success))
     
     # Create summary of results - REMOVED
     # create_frame_summary()
     
     # Report final status
-    successful = sum(1 for _, success in results if success)
-    logging.info(f"Frame extraction complete. Successfully processed {successful}/{len(video_files)} videos.")
+    successful_transects = sum(1 for _, success in results if success)
+    logging.info(f"Frame extraction run complete. Successfully processed {successful_transects}/{len(grouped_videos)} transect(s).")
     
-    if successful != len(video_files):
-        failed = [transect_id for transect_id, success in results if not success]
-        logging.warning(f"Failed to process: {', '.join(failed)}")
+    if successful_transects != len(grouped_videos):
+        failed_transects = [transect_id for transect_id, success in results if not success]
+        if failed_transects:
+            logging.warning(f"Failed to process the following transect(s): {', '.join(failed_transects)}")
 
 if __name__ == "__main__":
     main()
