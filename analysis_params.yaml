@@ -3,14 +3,14 @@
 
 # Project Information
 project:
-  name: "test" # Note: This name will be overridden by the directory name
+  name: "2024_FLC_HBE_PBL_forGillian_23may2025" # Note: This name will be overridden by the directory name
   notes: |
     running on big proxy files from the cinema raw encoding process. using various panama and trmp transect.
- 
+
 # Processing Parameters
 processing:
   # Frame Extraction (step0.py)
-  frames_per_transect: 100  # Number of frames to extract per model (1200)
+  frames_per_transect: 1200  # Number of frames to extract per model (1200)
   # extraction_rate: 0.5      # 1.0 = all frames, 0.5 = every other frame
                             # Rate for extracting frames if frames_per_transect is 0.
                             # Determines the interval: 1.0 = every frame, 0.5 = every 2nd frame, 0.25 = every 4th frame etc.
@@ -40,13 +40,13 @@ processing:
       adaptive_fitting: true          # Adaptively fit camera parameters based on estimated reliability
       
       # Depth map parameters
-      depth_downscale: 4             # Downscale factor for depth maps (1= no downscale, 4=medium quality) (1)
-      depth_filter_mode: "MildFiltering" # Depth map filtering mode: NoFiltering, MildFiltering, ModerateFiltering, AggressiveFiltering
+      depth_downscale: 1             # Downscale factor for depth maps (1= no downscale, 4=medium quality) (1)
+      depth_filter_mode: "NoFiltering" # Depth map filtering mode: NoFiltering, MildFiltering, ModerateFiltering, AggressiveFiltering
       
       # Model building parameters
       surface_type: "Arbitrary"        # Surface type: Arbitrary (freeform) or HeightField (flat surface)
       interpolation: "EnabledInterpolation" # Interpolation mode: DisabledInterpolation, EnabledInterpolation, Extrapolated
-      face_count: "LowFaceCount"      # Target face count: LowFaceCount, MediumFaceCount, HighFaceCount, CustomFaceCount (MediumFaceCount)
+      face_count: "HighFaceCount"      # Target face count: LowFaceCount, MediumFaceCount, HighFaceCount, CustomFaceCount (MediumFaceCount)
       volumetric_masks: false          # Use volumetric masking
       vertex_colors: false              # Calculate vertex colors
       
@@ -57,8 +57,8 @@ processing:
       
       # UV mapping
       mapping_mode: "GenericMapping"   # UV mapping mode: GenericMapping, OrthophotoMapping, AdaptiveOrthophotoMapping, SphericalMapping, CameraMapping
-      texture_size: 4096              # Texture size in pixels (power of 2) (16384 = 128^2 ; 4096 = 64^2 ; 4096 = 32^2 ; 2048 = 16^2 ; 1024 = 8^2 ; 512 = 4^2 ; 256 = 2^2 ; 128 = 1^2) 
-      page_count: 1                    # Number of texture pages (4)
+      texture_size: 16384              # Texture size in pixels (power of 2) (16384 = 128^2 ; 4096 = 64^2 ; 4096 = 32^2 ; 2048 = 16^2 ; 1024 = 8^2 ; 512 = 4^2 ; 256 = 2^2 ; 128 = 1^2) 
+      page_count: 4                    # Number of texture pages (4)
       
       # Texture building
       texture_type: "DiffuseMap"       # Texture type: DiffuseMap, NormalMap, OcclusionMap
@@ -71,8 +71,8 @@ processing:
   ######## STOP HERE #########
   # Chunk Management (step2.py)
   chunk_management:
-    psx_startdir: "examples/sample_project_10april25/output"         # Starting directory for PSX files
-    psx_finaldir: "examples/sample_project_10april25/output"        # Final directory for PSX files
+    psx_startdir: "examples/2024_FLC_HBE_PBL_forGillian_23may2025/output"         # Starting directory for PSX files
+    psx_finaldir: "examples/2024_FLC_HBE_PBL_forGillian_23may2025/output"        # Final directory for PSX files
     chunk_quality:
       min_cameras: 0                 # Minimum number of aligned cameras for a quality chunk
       min_alignment_percentage: 0    # Minimum percentage of aligned cameras for a quality chunk
