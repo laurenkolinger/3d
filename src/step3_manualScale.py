@@ -1,13 +1,19 @@
 """
-Step 3: Model Processing and Exports
+Step 3 Manual Scale: Model Processing and Exports (Manual Scale Bar Workflow)
 
-This script:
-1. Adds scale bars to the model (if coded targets are present)
+This script assumes scale bars have been manually added in Metashape GUI and:
+1. Skips automatic scale bar creation (assumes manually added)
 2. Removes small disconnected components
 3. Exports orthomosaic
 4. Exports textured model
 5. Exports report
 6. Saves the project
+
+WORKFLOW: 
+1. Run reset_step3.py to clean previous step 3 outputs
+2. Manually add scale bars in Metashape GUI
+3. Save the PSX project
+4. Run this script to complete remaining step 3 operations
 """
 
 import os
@@ -28,96 +34,48 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(os.path.join(DIRECTORIES["logs"], f"step3_{PROJECT_NAME}.log")),
+        logging.FileHandler(os.path.join(DIRECTORIES["logs"], f"step3_manualScale_{PROJECT_NAME}.log")),
         logging.StreamHandler()
     ]
 )
 
-def find_marker_by_label(chunk, label):
+def check_existing_scale_bars(chunk):
     """
-    Find a marker in the chunk by its label.
+    Check if scale bars already exist in the chunk.
     
     Args:
-        chunk (Metashape.Chunk): The chunk to search in
-        label (str): The marker label to find
+        chunk (Metashape.Chunk): The chunk to check
         
     Returns:
-        Metashape.Marker or None: The found marker or None if not found
+        tuple: (has_scale_bars, scale_bar_count, scale_bar_info)
     """
-    for marker in chunk.markers:
-        if marker.label == label:
-            return marker
-    return None
-
-def add_scale_bars(chunk, has_coded_scales, scale_bars):
-    """
-    Add scale bars to the model and properly apply scaling.
+    scale_bar_count = len(chunk.scalebars)
+    scale_bar_info = []
     
-    Args:
-        chunk (Metashape.Chunk): The chunk to process
-        has_coded_scales (bool): Whether coded scales are present
-        scale_bars (list): List of scale bar definitions (start_marker, end_marker, distance)
+    if scale_bar_count > 0:
+        logging.info(f"Found {scale_bar_count} existing scale bars in chunk {chunk.label}")
+        for i, scalebar in enumerate(chunk.scalebars):
+            enabled = scalebar.reference.enabled if scalebar.reference else False
+            distance = scalebar.reference.distance if scalebar.reference else "Unknown"
+            accuracy = scalebar.reference.accuracy if scalebar.reference else "Unknown"
+            
+            info = {
+                'label': scalebar.label,
+                'enabled': enabled,
+                'distance': distance,
+                'accuracy': accuracy
+            }
+            scale_bar_info.append(info)
+            
+            logging.info(f"  Scale bar {i+1}: '{scalebar.label}' - Distance: {distance}m, Enabled: {enabled}, Accuracy: {accuracy}")
         
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    if not has_coded_scales:
-        logging.info("Coded scales are not present. Skipping scale bar addition.")
-        return True
-    
-    try:
-        # Detect circular 20-bit markers first
-        logging.info("Detecting circular 20-bit coded targets...")
-        chunk.detectMarkers(target_type=Metashape.TargetType.CircularTarget20bit)
-        logging.info(f"Found {len(chunk.markers)} markers after detection")
-        
-        scale_bars_added = 0
-        for scale_bar_def in scale_bars:
-            start_marker = find_marker_by_label(chunk, scale_bar_def["start_marker"])
-            end_marker = find_marker_by_label(chunk, scale_bar_def["end_marker"])
-            
-            if start_marker and end_marker:
-                scale_bar = chunk.addScalebar(start_marker, end_marker)
-                
-                # Set scale bar reference properties
-                scale_bar.reference.distance = scale_bar_def["distance"]
-                scale_bar.reference.enabled = True  # Enable the reference!
-                scale_bar.reference.accuracy = 0.001  # Set accuracy to 1mm
-                
-                scale_bars_added += 1
-                logging.info(f"Added scale bar between {scale_bar_def['start_marker']} and {scale_bar_def['end_marker']} with distance {scale_bar_def['distance']}m")
-            else:
-                missing = []
-                if not start_marker:
-                    missing.append(scale_bar_def['start_marker'])
-                if not end_marker:
-                    missing.append(scale_bar_def['end_marker'])
-                logging.warning(f"Could not find markers: {', '.join(missing)}")
-        
-        # Apply scaling if scale bars were added
-        if scale_bars_added > 0:
-            logging.info("Updating chunk transformation based on scale bars...")
-            chunk.updateTransform()
-            
-            # Log the current region and transform information for debugging
-            if chunk.region:
-                logging.info(f"Chunk region size after scaling: {chunk.region.size}")
-            if chunk.transform:
-                logging.info(f"Chunk scale factor: {chunk.transform.scale}")
-            
-            # List all scale bars and their settings
-            for scalebar in chunk.scalebars:
-                logging.info(f"Scale bar '{scalebar.label}': distance={scalebar.reference.distance}m, enabled={scalebar.reference.enabled}")
-            
-            logging.info(f"Successfully added and applied {scale_bars_added} scale bars to chunk {chunk.label}")
-            return True
-        else:
-            logging.warning(f"No scale bars could be added to chunk {chunk.label}")
-            return False
-            
-    except Exception as e:
-        logging.error(f"Error adding scale bars: {str(e)}")
-        return False
+        return True, scale_bar_count, scale_bar_info
+    else:
+        logging.warning(f"No existing scale bars found in chunk {chunk.label}")
+        logging.warning("This script assumes scale bars have been manually added. Consider:")
+        logging.warning("1. Adding scale bars manually in Metashape GUI")
+        logging.warning("2. Using regular step3.py for automatic scale bar creation")
+        return False, 0, []
 
 def ground_model(chunk):
     """
@@ -218,7 +176,7 @@ def export_orthomosaic(chunk, output_dir, compression):
             )
                  
         # Set up the output path
-        ortho_path = os.path.join(output_dir, f"{chunk.label}_orthomosaic.tif")
+        ortho_path = os.path.join(output_dir, f"{chunk.label}_orthomosaic_manualScale.tif")
         
         # Get configuration and check resolution sanity
         config = PARAMS['processing']['model_processing']
@@ -268,7 +226,7 @@ def export_orthomosaic(chunk, output_dir, compression):
                 save_scheme=True,
                 raster_transform=Metashape.RasterTransformType.RasterTransformNone
             )
-            logging.info(f"Orthomosaic exported successfully to: {ortho_path}")
+            logging.info(f"Orthomosaic (manual scale) exported successfully to: {ortho_path}")
             return True
         
         except RuntimeError as e:
@@ -291,7 +249,7 @@ def export_orthomosaic(chunk, output_dir, compression):
                     save_world=config["orthomosaic"]["save_world"],
                     white_background=True
                 )
-                logging.info(f"Orthomosaic exported with fallback settings to: {ortho_path}")
+                logging.info(f"Orthomosaic (manual scale) exported with fallback settings to: {ortho_path}")
                 return True
             except Exception as e2:
                 logging.error(f"Alternative export also failed: {str(e2)}")
@@ -314,11 +272,11 @@ def export_model(chunk, output_dir):
     """
     try:
         # Create subdirectory for model files
-        model_subdir = os.path.join(output_dir, f"{chunk.label}_textured_model")
+        model_subdir = os.path.join(output_dir, f"{chunk.label}_textured_model_manualScale")
         os.makedirs(model_subdir, exist_ok=True)
         
         # Set model export path
-        model_path = os.path.join(model_subdir, f"{chunk.label}_textured_model.obj")
+        model_path = os.path.join(model_subdir, f"{chunk.label}_textured_model_manualScale.obj")
         
         # Export model
         config = PARAMS['processing']['model_processing']
@@ -333,7 +291,7 @@ def export_model(chunk, output_dir):
             save_colors=config['model_export']["save_colors"]
         )
         
-        logging.info(f"Textured model exported to: {model_path}")
+        logging.info(f"Textured model (manual scale) exported to: {model_path}")
         return True
     
     except Exception as e:
@@ -352,9 +310,9 @@ def export_report(chunk, output_dir):
         bool: True if successful, False otherwise
     """
     try:
-        report_path = os.path.join(output_dir, f"{chunk.label}_report.pdf")
-        chunk.exportReport(report_path, title=f"{chunk.label}")
-        logging.info(f"Report exported to: {report_path}")
+        report_path = os.path.join(output_dir, f"{chunk.label}_report_manualScale.pdf")
+        chunk.exportReport(report_path, title=f"{chunk.label} (Manual Scale)")
+        logging.info(f"Report (manual scale) exported to: {report_path}")
         return True
     
     except Exception as e:
@@ -362,7 +320,12 @@ def export_report(chunk, output_dir):
         return False
 
 def main():
-    """Main function to process models and create exports."""
+    """Main function to process models and create exports with manual scale workflow."""
+    logging.info("="*60)
+    logging.info("STEP 3 MANUAL SCALE: Model Processing and Exports")
+    logging.info("This script assumes scale bars have been manually added")
+    logging.info("="*60)
+    
     # Open the existing document if running in Metashape GUI
     if Metashape.app.document:
         doc = Metashape.app.document
@@ -383,8 +346,6 @@ def main():
     
     # Load configuration
     config = PARAMS['processing']['model_processing']
-    has_coded_scales = config.get("has_coded_scales", False)
-    scale_bars = config.get("scale_bars", [])
     
     # Set up compression for orthomosaic export
     compression = Metashape.ImageCompression()
@@ -431,27 +392,25 @@ def main():
             
             # Open the project
             doc = Metashape.Document()
-            doc.open(project_path, read_only=False)
+            
+            try:
+                doc.open(project_path, read_only=False)
+            except Exception as e:
+                logging.error(f"Could not open project {project_path}: {str(e)}")
+                continue
             
             # Process each chunk in the project
             for chunk in doc.chunks:
-                # Check if already processed (skip if step 3 complete)
+                # Check if already processed (skip if step 3 complete with manual scale)
                 status = get_transect_status(chunk.label)
-                if status.get("Step 3 complete", "") == "True":
-                    logging.info(f"Chunk {chunk.label} already processed, skipping...")
+                if status.get("Step 3 complete", "") == "True" and status.get("Step 3 scale method", "") == "Manual":
+                    logging.info(f"Chunk {chunk.label} already processed with manual scale, skipping...")
                     continue
                     
-                logging.info(f"Processing chunk: {chunk.label}")
+                logging.info(f"Processing chunk: {chunk.label} (Manual Scale Workflow)")
                 
-                # Add scale bars and apply scaling FIRST
-                scale_bars_applied = False
-                if has_coded_scales:
-                    scale_bars_applied = add_scale_bars(chunk, has_coded_scales, scale_bars)
-                
-                # Save project after scale bars to ensure scaling is applied
-                if scale_bars_applied:
-                    logging.info("Saving project to apply scale bar transformations...")
-                    doc.save()
+                # Check for existing scale bars (manual workflow assumes they exist)
+                has_scale_bars, scale_bar_count, scale_bar_info = check_existing_scale_bars(chunk)
                 
                 # Ground the model (move minimum Z to 0)
                 ground_model(chunk)
@@ -460,29 +419,36 @@ def main():
                 if config["model_cleanup"].get("remove_small_components", True):
                     remove_small_components(chunk, config["model_cleanup"].get("min_faces", 100))
                 
-                # Export orthomosaic (now with proper scaling)
-                export_orthomosaic(chunk, orthomosaic_dir, compression)
+                # Export orthomosaic (with manual scaling applied)
+                ortho_success = export_orthomosaic(chunk, orthomosaic_dir, compression)
                 
                 # Export textured model
-                export_model(chunk, model_dir)
+                model_success = export_model(chunk, model_dir)
                 
                 # Export report
-                export_report(chunk, report_dir)
+                report_success = export_report(chunk, report_dir)
                 
-                # Update tracking
+                # Update tracking with manual scale indicators (FIXED: use only existing columns)
                 update_tracking(chunk.label, {
                     "Status": "Step 3 complete",
                     "Step 3 complete": "True",
-                    "Step 3 scale method": "Automatic",
-                    "Step 3 scale applied": str(has_coded_scales),
+                    "Step 3 scale method": "Manual",
+                    "Step 3 scale applied": "True" if scale_bar_count > 0 else "False",
                     "Step 3 model grounded": "True",
-                    "Step 3 ortho exported": "True",
-                    "Step 3 model exported": "True"
+                    "Step 3 ortho exported": str(ortho_success),
+                    "Step 3 model exported": str(model_success),
+                    "Notes": f"Manual scale: {scale_bar_count} scale bars, {sum(1 for sb in scale_bar_info if sb['enabled'])} enabled"
                 })
+                
+                logging.info(f"Completed manual scale processing for chunk {chunk.label}")
             
             # Save the project
-            doc.save()
-            logging.info(f"Saved project: {project_path}")
+            try:
+                doc.save()
+                logging.info(f"Saved project: {project_path}")
+            except Exception as e:
+                logging.error(f"Could not save project {project_path}: {str(e)}")
+                logging.warning("If file is read-only, run reset_step3.py or use regular step3.py")
     else:
         # If DataFrame doesn't have the expected columns, look for projects directly
         psx_finaldir = DIRECTORIES.get("psx_output", "05_outputs/psx")
@@ -497,27 +463,25 @@ def main():
                 
                 # Open the project
                 doc = Metashape.Document()
-                doc.open(project_path, read_only=False)
+                
+                try:
+                    doc.open(project_path, read_only=False)
+                except Exception as e:
+                    logging.error(f"Could not open project {project_path}: {str(e)}")
+                    continue
                 
                 # Process each chunk in the project
                 for chunk in doc.chunks:
-                    # Check if already processed (skip if step 3 complete)
+                    # Check if already processed (skip if step 3 complete with manual scale)
                     status = get_transect_status(chunk.label)
-                    if status.get("Step 3 complete", "") == "True":
-                        logging.info(f"Chunk {chunk.label} already processed, skipping...")
+                    if status.get("Step 3 complete", "") == "True" and status.get("Step 3 scale method", "") == "Manual":
+                        logging.info(f"Chunk {chunk.label} already processed with manual scale, skipping...")
                         continue
                         
-                    logging.info(f"Processing chunk: {chunk.label}")
+                    logging.info(f"Processing chunk: {chunk.label} (Manual Scale Workflow)")
                     
-                    # Add scale bars and apply scaling FIRST
-                    scale_bars_applied = False
-                    if has_coded_scales:
-                        scale_bars_applied = add_scale_bars(chunk, has_coded_scales, scale_bars)
-                    
-                    # Save project after scale bars to ensure scaling is applied
-                    if scale_bars_applied:
-                        logging.info("Saving project to apply scale bar transformations...")
-                        doc.save()
+                    # Check for existing scale bars (manual workflow assumes they exist)
+                    has_scale_bars, scale_bar_count, scale_bar_info = check_existing_scale_bars(chunk)
                     
                     # Ground the model (move minimum Z to 0)
                     ground_model(chunk)
@@ -526,33 +490,43 @@ def main():
                     if config["model_cleanup"].get("remove_small_components", True):
                         remove_small_components(chunk, config["model_cleanup"].get("min_faces", 100))
                     
-                    # Export orthomosaic (now with proper scaling)
-                    export_orthomosaic(chunk, orthomosaic_dir, compression)
+                    # Export orthomosaic (with manual scaling applied)
+                    ortho_success = export_orthomosaic(chunk, orthomosaic_dir, compression)
                     
                     # Export textured model
-                    export_model(chunk, model_dir)
+                    model_success = export_model(chunk, model_dir)
                     
                     # Export report
-                    export_report(chunk, report_dir)
+                    report_success = export_report(chunk, report_dir)
                     
-                    # Update tracking
+                    # Update tracking with manual scale indicators (FIXED: use only existing columns)
                     update_tracking(chunk.label, {
                         "Status": "Step 3 complete",
                         "Step 3 complete": "True",
-                        "Step 3 scale method": "Automatic",
-                        "Step 3 scale applied": str(has_coded_scales),
+                        "Step 3 scale method": "Manual",
+                        "Step 3 scale applied": "True" if scale_bar_count > 0 else "False",
                         "Step 3 model grounded": "True",
-                        "Step 3 ortho exported": "True",
-                        "Step 3 model exported": "True"
+                        "Step 3 ortho exported": str(ortho_success),
+                        "Step 3 model exported": str(model_success),
+                        "Notes": f"Manual scale: {scale_bar_count} scale bars, {sum(1 for sb in scale_bar_info if sb['enabled'])} enabled"
                     })
+                    
+                    logging.info(f"Completed manual scale processing for chunk {chunk.label}")
                 
                 # Save the project
-                doc.save()
-                logging.info(f"Saved project: {project_path}")
+                try:
+                    doc.save()
+                    logging.info(f"Saved project: {project_path}")
+                except Exception as e:
+                    logging.error(f"Could not save project {project_path}: {str(e)}")
+                    logging.warning("If file is read-only, run reset_step3.py or use regular step3.py")
         else:
             logging.error(f"PSX output directory not found: {psx_dir_path}")
     
-    logging.info("All model processing and exports completed successfully.")
+    logging.info("="*60)
+    logging.info("STEP 3 MANUAL SCALE: All processing completed successfully.")
+    logging.info("Outputs marked with '_manualScale' suffix to distinguish from automatic workflow.")
+    logging.info("="*60)
 
 if __name__ == "__main__":
     main() 
