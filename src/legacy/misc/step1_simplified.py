@@ -63,8 +63,8 @@ def process_transect(transect_id, doc=None, psx_path=None):
             
             # Set project path if not provided
             if psx_path is None:
-                os.makedirs(DIRECTORIES["psx_input"], exist_ok=True)
-                psx_path = os.path.join(DIRECTORIES["psx_input"], f"{transect_id}_step1.psx")
+                os.makedirs(DIRECTORIES["psxraw"], exist_ok=True)
+                psx_path = os.path.join(DIRECTORIES["psxraw"], f"{transect_id}_step1.psx")
         
         # Configure GPU if available
         if USE_GPU:
@@ -297,10 +297,10 @@ def main():
             current_doc = Metashape.Document()
             
             # Ensure directory exists
-            os.makedirs(DIRECTORIES["psx_input"], exist_ok=True)
+            os.makedirs(DIRECTORIES["psxraw"], exist_ok=True)
             
             # Create PSX path for new batch
-            current_psx_path = os.path.join(DIRECTORIES["psx_input"], f"psx_{batch_num}_{timestamp}.psx")
+            current_psx_path = os.path.join(DIRECTORIES["psxraw"], f"psx_{batch_num}_{timestamp}.psx")
             logging.info(f"Starting new batch {batch_num} in {current_psx_path}")
             
             # Initialize batch mapping for this PSX file
@@ -344,7 +344,7 @@ def main():
             logging.error(f"Error saving final document: {str(e)}")
     
     # Create batch summary
-    summary_path = os.path.join(DIRECTORIES["data_root"], "psx_batch_summary.csv")
+    summary_path = os.path.join(DIRECTORIES["processing_root"], "psx_batch_summary.csv")
     data = []
     for psx_file, transects in batch_mapping.items():
         for transect_id in transects:

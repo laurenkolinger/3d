@@ -48,9 +48,9 @@ try:
             
             # Update CSV with this PSX info if it's not already there
             for index, row in df.iterrows():
-                if pd.isna(row.get('psx_input_path')) or pd.isna(row.get('psx_input_name')):
-                    df.at[index, 'psx_input_path'] = psx_dir
-                    df.at[index, 'psx_input_name'] = psx_name
+                if pd.isna(row.get('psxraw_path')) or pd.isna(row.get('psxraw_name')):
+                    df.at[index, 'psxraw_path'] = psx_dir
+                    df.at[index, 'psxraw_name'] = psx_name
             
             # Check if any rows have extracted frames but no photos added to PSX
             for index, row in df.iterrows():

@@ -62,9 +62,9 @@ def process_transect(transect_id, doc=None, psx_path=None):
             
             # Set project path if not provided
             if psx_path is None:
-                # Create psx_input directory if it doesn't exist
-                os.makedirs(DIRECTORIES["psx_input"], exist_ok=True)
-                psx_path = os.path.join(DIRECTORIES["psx_input"], f"{transect_id}_step1.psx")
+                # Create psxraw directory if it doesn't exist
+                os.makedirs(DIRECTORIES["psxraw"], exist_ok=True)
+                psx_path = os.path.join(DIRECTORIES["psxraw"], f"{transect_id}_step1.psx")
         
         # Set up processing parameters
         if USE_GPU:
@@ -292,7 +292,7 @@ def create_or_update_batch_summary(batch_mapping):
     Args:
         batch_mapping (dict): Mapping of PSX batch files to transects
     """
-    summary_path = os.path.join(DIRECTORIES["data_root"], "psx_batch_summary.csv")
+    summary_path = os.path.join(DIRECTORIES["processing_root"], "psx_batch_summary.csv")
     
     # Create data for CSV
     data = []
@@ -364,16 +364,14 @@ def main():
             # Create new document for this batch
             current_doc = Metashape.Document()
             
-            # Create psx_input directory if it doesn't exist
-            os.makedirs(DIRECTORIES["psx_input"], exist_ok=True)
+            # Create psxraw directory if it doesn't exist
+            os.makedirs(DIRECTORIES["psxraw"], exist_ok=True)
             
             # Generate PSX path for this batch
             if batch_num == 1:
-                # Keep first batch as 1
-                current_psx_path = os.path.join(DIRECTORIES["psx_input"], f"psx_1_{timestamp}.psx")
+                current_psx_path = os.path.join(DIRECTORIES["psxraw"], f"psx_1_{timestamp}.psx")
             else:
-                # Regular numbering for 2+
-                current_psx_path = os.path.join(DIRECTORIES["psx_input"], f"psx_{batch_num}_{timestamp}.psx")
+                current_psx_path = os.path.join(DIRECTORIES["psxraw"], f"psx_{batch_num}_{timestamp}.psx")
             
             logging.info(f"Starting new batch {batch_num} with PSX file {current_psx_path}")
             

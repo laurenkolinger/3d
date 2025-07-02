@@ -17,7 +17,7 @@ import config
 doc = Metashape.app.document
 
 # Get input and output directories from configuration
-psx_startdir = config.INPUT_DIRS["psx_input"]
+psx_startdir = config.INPUT_DIRS["psxraw"]
 psx_finaldir = config.OUTPUT_DIRS["psx_output"]
 
 # Get metadata CSV file path
