@@ -23,23 +23,33 @@ This project provides a set of Python scripts to automate the workflow of proces
 
 ```
 ./
-├── analysis_params.yaml       # Base analysis parameters (copy to project dir)
-├── docs/                      # Documentation files
-├── examples/                  # Example project directories
-├── images/                    # Supporting images (e.g., for README)
-├── presets/                   # Preset files for software (Lightroom, Premiere)
-├── src/                       # Source code
-│   ├── config.py             # Configuration loading utilities
-│   ├── enumerate_gpus.py     # Utility to list available GPUs for Metashape
-│   ├── reset.sh              # Utility script to reset project outputs
-│   ├── step0.py              # Frame Extraction
-│   ├── step1.py              # Initial 3D Processing (and step1_isolated.py)
-│   ├── step2.py              # Chunk Management
-│   ├── step3.py              # Model Processing and Exports
-│   └── step4.py              # Final Exports and Web Publishing
-├── .gitignore                 # Specifies intentionally untracked files that Git should ignore
-├── README.md                  # This file
-└── requirements.txt           # Python package requirements
+├── analysis_params.yaml          # Base analysis parameters template
+├── docs/                         # Documentation files
+│   ├── api_1july.txt            # API documentation
+│   └── metashape_python_api_2_1_1.pdf
+├── examples/                     # Example project directories (local)
+├── images/                       # Supporting images (eg. for RMD rendering)
+├── presets/                      # Software preset files
+│   ├── lightroom/               # Adobe Lightroom presets
+│   │   └── step0_lightroom_hdrphoto_r5c.xmp
+│   └── premiere/                # Adobe Premiere presets
+│       └── step0_premierepro_uhd_8k_23sept2024.epr
+├── src/                          # Source code
+│   ├── config.py                # Configuration loading utilities
+│   ├── step0.py                 # Frame extraction
+│   ├── step1.py                 # Initial 3D processing (most time-consuming)
+│   ├── step2.py                 # Chunk management/consolidation
+│   ├── step3.py                 # Model processing (automatic scaling)
+│   ├── step3_manualScale.py     # Model processing (manual scaling)
+│   ├── step4.py                 # Final exports & web publishing
+│   ├── legacy/                  # Legacy/archived scripts
+│   └── utility/                 # Utility scripts
+│       ├── enumerate_gpus.py    # GPU detection for Metashape
+│       ├── reset_full.py        # Complete project reset
+│       ├── reset_step1.py       # Reset preserving Steps 0&1
+│       └── file_naming.py       # Standardized file naming functions
+├── README.md                     # This documentation
+└── requirements.txt              # Python package dependencies
 ```
 
 ## Initial Setup
@@ -91,20 +101,20 @@ Copy and configure the analysis parameters file:
 cp analysis_params.yaml {PROJECT_DIR}/
 ```
 
-The configuration file (`analysis_params.yaml`) located within your `{PROJECT_DIR}` contains all the settings for your project.
+The configuration file (`analysis_params.yaml`) located within your `{PROJECT_DIR}` contains all the settings for the project.
 
 Make sure to:
 
-1. Review and update the project name and notes inside the `{PROJECT_DIR}/analysis_params.yaml` file.
+1. Review and update the description and notes inside the `{PROJECT_DIR}/analysis_params.yaml` file.
 2. Adjust any processing parameters within the `{PROJECT_DIR}/analysis_params.yaml` file as needed for your specific project.
-3. Note that the primary input/output directory paths (`video_source`, `processing`, `output`, etc.) are typically derived automatically by the scripts based on the `{PROJECT_DIR}` you provide when running them. You usually do not need to define these explicitly in the YAML file unless you intend to override the default structure.
+3. Note that the primary input/output directory paths (`video_source`, `processing`, `output`, etc.) are derived automatically by the scripts based on the `{PROJECT_DIR}` you provide when running them. 
 
 ## Standardized File Naming
 
 The pipeline uses a clean, standardized naming system for all outputs:
 
 - **Model ID Format:** All file names use the exact Model ID (e.g., `TCRMP20241014_3D_BWR_T2`)
-- **No Suffixes:** Files are named simply as `{MODEL_ID}.ext` (no `_textured_model` or `_manualScale` suffixes)
+- **No Suffixes:** Files are named simply as `{MODEL_ID}.ext`
 - **Organized Structure:** 
   - Orthomosaics and models get their own subdirectories: `output/orthomosaics/{MODEL_ID}/` and `output/models/{MODEL_ID}/`
   - Reports are flat in `output/reports/{MODEL_ID}.pdf`
@@ -175,78 +185,50 @@ The complete processing workflow consists of the following steps:
 
 ### Step 0: Frame Extraction
 
-This step extracts frames from video footage at a specified rate.
+Extracts frames from video footage at a specified rate.
 
 ```bash
-python src/step0.py            
+python src/step0.py {PROJECT_DIR}
 ```
 
-This will:
-1. Load project configuration from the specified directory's `analysis_params.yaml` file
-2. Scan the `video_source` directory for video files
-3. Create a subdirectory for each video in the `frames` directory
-4. Extract frames according to the settings in `analysis_params.yaml`
-5. Create a tracking CSV file for each model
-6. Generate a summary of extracted frames
+Scans `video_source/` for videos, extracts frames to `processing/frames/`, and creates tracking CSV files.
 
-### Step 1: Initial 3D Processing
+### Step 1: Initial 3D Processing ⏱️ *Most Time-Consuming*
 
-This step performs the initial 3D reconstruction using the extracted frames. It creates batched PSX files with multiple models grouped together for efficiency.
-
-Note this is the most time consuming step
+Performs initial 3D reconstruction using extracted frames. Creates batched PSX files with multiple models grouped for efficiency.
 
 ```bash
-PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step1.py
+PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step1.py {PROJECT_DIR}
 ```
 
-This will:
-1. Load project configuration from the specified directory's `analysis_params.yaml` file
-2. Find all model directories in the `frames` directory
-3. Group models into batches (maximum 5 models per batch by default)
-4. For each model:
-   - Add photos and align cameras
-   - Filter points and optimize cameras
-   - Build depth maps and create 3D model
-   - Apply textures and generate report
-5. Save each batch as a separate PSX file in the `psxraw` directory
-6. Create a batch summary CSV file mapping models to PSX files
+Groups models into batches, aligns cameras, builds depth maps, creates 3D models with textures, and saves to `processing/psxraw/`.
 
 ### Manual Step: Quality Check & Alignment
 
-After Step 1, manually check the quality of the generated models and make any necessary adjustments:
+After Step 1, manually check the quality of generated models:
 
-1. Open each PSX file in the `{PROJECT_DIR}/processing/psxraw` directory with Metashape
-2. For each model (chunk) in the project:
-   - Review camera alignment and model quality
-   - Ensure point cloud is clean and representative of the model
-   - Check for any alignment issues or artifacts
-   - Identify any areas that might need adjustments in Step 2
-   - Verify that model IDs are correctly labeled
+1. Open each PSX file in `processing/psxraw/` with Metashape
+2. For each model (chunk): review camera alignment, check point cloud quality, verify model IDs are correctly labeled
 3. Save the project
 
 ### Step 2: Chunk Management
 
-This step consolidates chunks by site to prepare for final processing.
+Consolidates chunks by site to prepare for final processing.
 
 ```bash
-PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py
+PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py {PROJECT_DIR}
 ```
 
-This will:
-1. Load project configuration from the specified directory's `analysis_params.yaml` file 
-2. Read the tracking files to identify completed models
-3. Group models by site
-4. Create new PSX files organized by site in the `psx_output` directory
-5. Update tracking information for each model
+Groups models by site and creates new PSX files organized by site in `output/psx/`.
 
-### Manual Step: Straightening & Scaling
+### Manual Step: Straightening & Scaling Preparation
 
-After Step 2, manually straighten and scale each model:
+After Step 2, manually straighten each model and prepare for scaling:
 
 1. Open each project in the `output/psx/` directory
 2. For each chunk in the project:
 
-   **Straightening:**
+   **Straightening (always required):**
    - Load the textured model
    - Auto-adjust brightness and contrast in one of the images to improve texture
    - Switch to rotate model view
@@ -255,107 +237,68 @@ After Step 2, manually straighten and scale each model:
    - Resize the region to "crop" to the model area (use top XY and side views)
    - Use the rectangular crop tool to crop to the model area bounded by the region
 
-   **Scaling (if using manual scaling):**
-   - Place markers on scale bars in the model
-   - Set up at least 2 scale bars at different locations in the model
-   - Set the known distance for each scale bar in the Reference pane
-   - Press the Refresh button to update the scale
-   - Verify that the error is less than 0.01
+   **Scaling Preparation:**
+   - **For automatic scaling (Step 3a):** Ensure coded targets are visible and properly positioned
+   - **For manual scaling (Step 3b):** Place markers on scale bars, set up at least 2 scale bars at different locations, set known distances in Reference pane, verify error < 0.01
    
-3. Save the project, and QUIT metashape before running Step 3
-
-> **Note:** Make sure you are only working from ONE PSX file in the psxraw directory. The system should create just one processing status file and update that one file.
+3. Save the project and quit Metashape
 
 ### Step 3: Model Processing and Exports
 
-This step adds scale bars (if coded targets are present), removes small components, builds and exports orthomosaics, textured models, and reports using standardized file naming.
+This step processes models with scaling, removes small components, and exports orthomosaics, textured models, and reports using standardized file naming.
 
-**On macOS**:
+**Approach 1: Try Automatic Scaling First (Recommended, if coded targets present)**
+
 ```bash
-# Run with project directory as argument
+# Run automatic scaling first (detects coded targets)
 /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3.py {PROJECT_DIR}
-# OR run without arguments to be prompted for the project directory
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3.py
 ```
 
-**For manual scale workflow:**
+**If automatic scaling fails or no coded targets are present:**
+
+**Approach 2: Reset and Use Manual Scaling**
+
 ```bash
-# Use this version if you manually added scale bars in Metashape
+# Reset to preserve Step 0&1 work, clear Step 2+ outputs
+python src/utility/reset_step1.py {PROJECT_DIR}
+
+# Re-run Step 2 (this is pretty quick)
+PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py {PROJECT_DIR}
+
+# Manually straighten and add scale bars in Metashape GUI (see Manual Step above)
+# Then run manual scale processing:
 /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3_manualScale.py {PROJECT_DIR}
 ```
 
-This will:
-1. Load project configuration from the specified directory's `analysis_params.yaml` file
-2. Process each project in the `output/psx/` directory
-3. For each model (chunk) in the project:
-   - Add scale bars if coded targets are present (step3.py only)
-   - Remove small disconnected components from the model
-   - Build and export orthomosaic to `output/orthomosaics/{MODEL_ID}/{MODEL_ID}.tif`
-   - Export textured model to `output/models/{MODEL_ID}/{MODEL_ID}.obj`
-   - Generate report as `output/reports/{MODEL_ID}.pdf`
-4. All outputs use clean Model ID naming (e.g., `TCRMP20241014_3D_BWR_T2`)
+**Alternative: Start with Manual Scaling**
+If you know there are no coded targets or prefer manual scaling from the start, skip `step3.py` and go directly to the manual workflow above.
 
-**Output Structure:** Both `step3.py` and `step3_manualScale.py` produce identical file names and directory structure - the only difference is the scaling method used internally.
+**Both approaches produce identical outputs:**
+- Orthomosaics: `output/orthomosaics/{MODEL_ID}/{MODEL_ID}.tif`
+- Models: `output/models/{MODEL_ID}/{MODEL_ID}.obj` 
+- Reports: `output/reports/{MODEL_ID}.pdf`
 
 ### Manual Step: Model Review and Touchups
 
 After Step 3, manually review and touch up the models:
 
 1. Open each project in Metashape
-2. For each chunk:
-   - Review the orthomosaic for quality, artifacts, or holes
-   - Check the textured model for issues with geometry or texture
-   - Fill any small holes in the model if necessary
-   - Adjust texture blending if needed
-   - Check that small disconnected components were properly removed
-   - Verify that scale bars are correctly set up (if applicable)
-   - Review model colors and brightness, make adjustments if needed
+2. For each chunk: review orthomosaic and textured model quality, fill small holes if needed, adjust texture blending, verify scale bars and small component removal
 3. Save the project
 
 ### Step 4: Final Exports and Web Publishing
 
-This step creates final high-resolution outputs and uploads decimated models to Sketchfab for web viewing.
+Creates final high-resolution outputs and uploads decimated models to Sketchfab for web viewing.
 
-**On macOS**:
 ```bash
-# Run with project directory as argument
 /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step4.py {PROJECT_DIR}
-# OR run without arguments to be prompted for the project directory
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step4.py
 ```
 
-This will:
-1. Load project configuration from the specified directory's `analysis_params.yaml` file
-2. For each model (chunk) in the project:
-   - Create a decimated copy for web viewing
-   - Upload to Sketchfab (if API token is provided)
-   - Export high-resolution orthomosaic
-   - Export high-resolution textured model
-   - Export point cloud
-   - Generate comprehensive report
-3. Save all exports to the `final_outputs` directory
+Creates decimated models for web, uploads to Sketchfab (if configured), exports high-resolution assets to `output/final/`.
 
 ## Configuration
 
-The processing pipeline is configured through YAML files:
-
-- Base configuration: `config/analysis_params.yaml`
-- Project-specific configuration: `{PROJECT_DIR}/analysis_params.yaml`
-
-### Project Directory Approach
-
-Each script in the pipeline requires a project directory containing an `analysis_params.yaml` file. This design allows:
-
-1. Processing different projects without modifying code
-2. Running multiple projects in parallel
-3. Maintaining a clear separation between different datasets
-4. Dynamically linking source files to project-specific directories for each run
-
-You can specify the project directory:
-- As a command-line argument when running scripts
-- Or interactively when prompted by the script if no directory is provided
-
-The system will load all configurations from the `analysis_params.yaml` file in that directory, ensuring all paths and settings are specific to the current project.
+Edit `{PROJECT_DIR}/analysis_params.yaml` for project-specific settings. Scripts automatically load configurations from this file, enabling processing of different projects without code modifications.
 
 ### Key Configuration Parameters
 
@@ -527,10 +470,9 @@ This Python script lists the available GPUs that Metashape can detect and use. T
 
 #### Transect and Camera Setup
 1. **S**cale bars: 
-   - Place at each end of transect
-   - One perpendicular, one parallel to transect
-   - Ensure targets visible in footage
-   - Verify scale bars remain stationary during filming
+   - Place at each end of transect (more or less)
+   - One perpendicular-ish (45 deg angle), one parallel to transect
+   - Ensure circular targets are **visible** in footage and that scale bars **never move** during filming (if they do, restart)
 
 2. **T**ime code: Reset (Mode button)
 
@@ -586,10 +528,6 @@ Each pass should be approximately 10 meters long and take about 1 minute, mainta
 4. Run each step in sequence, performing the manual steps between automated ones
 5. Check the output directories for results
 
-## License
-
-[MIT License](LICENSE)
-
 ## Acknowledgments
 
-This project was developed for the Territorial Coral Reef Monitoring Program. 
+This workflow was developed by Lauren Olinger for the Territorial Coral Reef Monitoring Program. 
