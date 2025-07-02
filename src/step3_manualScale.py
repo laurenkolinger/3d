@@ -23,11 +23,13 @@ import pandas as pd
 from config import (
     DIRECTORIES,
     PROJECT_NAME,
-    PARAMS,
     get_tracking_files,
-    get_transect_status,
-    update_tracking
+    update_tracking,
+    PARAMS,
+    get_transect_status
 )
+import datetime
+from utility.file_naming import get_export_paths, clean_model_id
 
 # Configure logging
 logging.basicConfig(
@@ -152,19 +154,24 @@ def remove_small_components(chunk, min_faces=100):
     logging.info(f"Removed {num_removed} components. Model now has {num_components_after} components.")
     return num_removed
 
-def export_orthomosaic(chunk, output_dir, compression):
+def export_orthomosaic(chunk, base_output_dir, compression):
     """
-    Build and export orthomosaic with reasonable resolution.
+    Build and export orthomosaic with standardized naming.
     
     Args:
         chunk (Metashape.Chunk): The chunk to process
-        output_dir (str): Directory to save the orthomosaic
+        base_output_dir (str): Base output directory
         compression (Metashape.ImageCompression): Compression settings
         
     Returns:
         bool: True if successful, False otherwise
     """
     try:
+        # Get standardized export paths
+        model_id = clean_model_id(chunk.label)
+        paths = get_export_paths(model_id, base_output_dir)
+        ortho_path = paths['orthomosaic']['file']
+        
         # Build orthomosaic if it hasn't been built yet
         if not chunk.orthomosaic:
             logging.info("Building orthomosaic...")
@@ -175,9 +182,6 @@ def export_orthomosaic(chunk, output_dir, compression):
                 fill_holes=config["orthomosaic"]["fill_holes"]
             )
                  
-        # Set up the output path
-        ortho_path = os.path.join(output_dir, f"{chunk.label}_orthomosaic_manualScale.tif")
-        
         # Get configuration and check resolution sanity
         config = PARAMS['processing']['model_processing']
         requested_resolution = config["orthomosaic"]["resolution"]
@@ -259,24 +263,22 @@ def export_orthomosaic(chunk, output_dir, compression):
         logging.error(f"Error building/exporting orthomosaic: {str(e)}")
         return False
 
-def export_model(chunk, output_dir):
+def export_model(chunk, base_output_dir):
     """
-    Export textured model.
+    Export textured model with standardized naming.
     
     Args:
         chunk (Metashape.Chunk): The chunk to process
-        output_dir (str): Directory to save the model
+        base_output_dir (str): Base output directory
         
     Returns:
         bool: True if successful, False otherwise
     """
     try:
-        # Create subdirectory for model files
-        model_subdir = os.path.join(output_dir, f"{chunk.label}_textured_model_manualScale")
-        os.makedirs(model_subdir, exist_ok=True)
-        
-        # Set model export path
-        model_path = os.path.join(model_subdir, f"{chunk.label}_textured_model_manualScale.obj")
+        # Get standardized export paths
+        model_id = clean_model_id(chunk.label)
+        paths = get_export_paths(model_id, base_output_dir)
+        model_path = paths['model']['file']
         
         # Export model
         config = PARAMS['processing']['model_processing']
@@ -291,28 +293,32 @@ def export_model(chunk, output_dir):
             save_colors=config['model_export']["save_colors"]
         )
         
-        logging.info(f"Textured model (manual scale) exported to: {model_path}")
+        logging.info(f"Textured model exported to: {model_path}")
         return True
     
     except Exception as e:
         logging.error(f"Error exporting model: {str(e)}")
         return False
 
-def export_report(chunk, output_dir):
+def export_report(chunk, base_output_dir):
     """
-    Export processing report.
+    Export processing report with standardized naming.
     
     Args:
         chunk (Metashape.Chunk): The chunk to process
-        output_dir (str): Directory to save the report
+        base_output_dir (str): Base output directory
         
     Returns:
         bool: True if successful, False otherwise
     """
     try:
-        report_path = os.path.join(output_dir, f"{chunk.label}_report_manualScale.pdf")
-        chunk.exportReport(report_path, title=f"{chunk.label} (Manual Scale)")
-        logging.info(f"Report (manual scale) exported to: {report_path}")
+        # Get standardized export paths
+        model_id = clean_model_id(chunk.label)
+        paths = get_export_paths(model_id, base_output_dir)
+        report_path = paths['report']['file']
+        
+        chunk.exportReport(report_path, title=f"{model_id}")
+        logging.info(f"Report exported to: {report_path}")
         return True
     
     except Exception as e:
@@ -420,13 +426,13 @@ def main():
                     remove_small_components(chunk, config["model_cleanup"].get("min_faces", 100))
                 
                 # Export orthomosaic (with manual scaling applied)
-                ortho_success = export_orthomosaic(chunk, orthomosaic_dir, compression)
+                ortho_success = export_orthomosaic(chunk, project_dir, compression)
                 
                 # Export textured model
-                model_success = export_model(chunk, model_dir)
+                model_success = export_model(chunk, project_dir)
                 
                 # Export report
-                report_success = export_report(chunk, report_dir)
+                report_success = export_report(chunk, project_dir)
                 
                 # Update tracking with manual scale indicators (FIXED: use only existing columns)
                 update_tracking(chunk.label, {
@@ -491,13 +497,13 @@ def main():
                         remove_small_components(chunk, config["model_cleanup"].get("min_faces", 100))
                     
                     # Export orthomosaic (with manual scaling applied)
-                    ortho_success = export_orthomosaic(chunk, orthomosaic_dir, compression)
+                    ortho_success = export_orthomosaic(chunk, project_dir, compression)
                     
                     # Export textured model
-                    model_success = export_model(chunk, model_dir)
+                    model_success = export_model(chunk, project_dir)
                     
                     # Export report
-                    report_success = export_report(chunk, report_dir)
+                    report_success = export_report(chunk, project_dir)
                     
                     # Update tracking with manual scale indicators (FIXED: use only existing columns)
                     update_tracking(chunk.label, {
@@ -525,7 +531,7 @@ def main():
     
     logging.info("="*60)
     logging.info("STEP 3 MANUAL SCALE: All processing completed successfully.")
-    logging.info("Outputs marked with '_manualScale' suffix to distinguish from automatic workflow.")
+    logging.info("Outputs use standardized naming identical to automatic workflow.")
     logging.info("="*60)
 
 if __name__ == "__main__":

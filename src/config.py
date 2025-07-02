@@ -105,19 +105,19 @@ PROJECT_ID = PROJECT_NAME # Use the derived name as the ID
 
 # --- Directory Definitions (Derived from PROJECT_DIR) ---
 BASE_DIRECTORY = PROJECT_DIR
-DATA_DIRECTORY = os.path.join(PROJECT_DIR, "data")
+PROCESSING_DIRECTORY = os.path.join(PROJECT_DIR, "processing")
 OUTPUT_DIRECTORY = os.path.join(PROJECT_DIR, "output")
 VIDEO_SOURCE_DIRECTORY = os.path.join(PROJECT_DIR, "video_source")
 
 # Define standard subdirectories relative to the project
 DIRECTORIES = {
     "base": BASE_DIRECTORY,
-    "data_root": DATA_DIRECTORY,
+    "processing_root": PROCESSING_DIRECTORY,
     "output_root": OUTPUT_DIRECTORY,
     "video_source": VIDEO_SOURCE_DIRECTORY, # Added video source here
-    "frames": os.path.join(DATA_DIRECTORY, "frames"),
+    "frames": os.path.join(PROCESSING_DIRECTORY, "frames"),
     "logs": os.path.join(OUTPUT_DIRECTORY, "logs"),
-    "psx_input": os.path.join(DATA_DIRECTORY, "psx_input"),
+    "psxraw": os.path.join(PROCESSING_DIRECTORY, "psxraw"),
     "orthomosaics": os.path.join(OUTPUT_DIRECTORY, "orthomosaics"),
     "models": os.path.join(OUTPUT_DIRECTORY, "models"),
     "reports": os.path.join(OUTPUT_DIRECTORY, "reports"), # Added reports directory
@@ -159,7 +159,7 @@ LOG_FILE = os.path.join(DIRECTORIES["logs"], f"processing_{PROJECT_NAME}.log")
 
 def create_directories():
     """Create required subdirectories within the project folder."""
-    # Only create directories defined within the project (data/output subfolders)
+    # Only create directories defined within the project (processing/output subfolders)
     for dir_name, dir_path in DIRECTORIES.items():
         if dir_path.startswith(PROJECT_DIR): # Check if path is within the project base
              # Exclude final_outputs from automatic creation initially
@@ -168,7 +168,7 @@ def create_directories():
                 
              # Ensure the specific paths for logs and reports are created
             # Simplify: Just attempt to create all other project-relative dirs
-            # if dir_name in ["logs", "reports", "frames", "psx_input", "orthomosaics", "models", "psx_output"]:
+            # if dir_name in ["logs", "reports", "frames", "psxraw", "orthomosaics", "models", "psx_output"]:
             try:
                 os.makedirs(dir_path, exist_ok=True)
             except OSError as e:
@@ -201,28 +201,8 @@ def initialize_tracking(model_id):
     # Ensure parent directory exists (should be project dir, usually exists)
     ensure_parent_directory(tracking_file)
     
-    # Comprehensive headers covering all processing steps
-    headers = [
-        "Model ID", "Status", 
-        # Step 0 columns
-        "Step 0 complete", "Video Length (s)", "Total Video Frames", "Frames Extracted", 
-        "Video Source", "Extraction Timestamp", "Step 0 start time", "Step 0 end time",
-        "Step 0 processing time (s)", "Frames directory",
-        # Step 1 columns
-        "Step 1 complete", "Step 1 start time", "Step 1 end time", 
-        "Step 1 processing time (s)", "Aligned cameras", "Total cameras", 
-        "PSX file", "Report file", "Step 1 error time",
-        # Step 2 columns
-        "Step 2 complete", "Step 2 site", "Step 2 consolidation time",
-        # Step 3 columns
-        "Step 3 complete", "Step 3 scale applied", "Step 3 ortho exported",
-        "Step 3 model exported", "Step 3 processing time",
-        # Step 4 columns
-        "Step 4 complete", "Step 4 web published", "Sketchfab URL",
-        "Step 4 high-res exported", "Step 4 processing time",
-        # General
-        "Notes"
-    ]
+    # **FIXED: Simplified headers to prevent CSV corruption**
+    headers = ["Model ID", "Status", "Step 0 complete", "Video Length (s)", "Total Video Frames", "Frames Extracted", "Video Source", "Extraction Timestamp", "Step 0 start time", "Step 0 end time", "Step 0 processing time (s)", "Frames directory", "Step 1 complete", "Step 1 start time", "Step 1 end time", "Step 1 processing time (s)", "Aligned cameras", "Total cameras", "PSX file", "Report file", "Step 1 error time", "Step 2 complete", "Step 2 site", "Step 2 consolidation time", "Step 3 complete", "Step 3 scale method", "Step 3 scale applied", "Step 3 ortho exported", "Step 3 model exported", "Step 3 processing time", "Step 4 complete", "Step 4 web published", "Sketchfab URL", "Step 4 high-res exported", "Step 4 processing time", "Notes"]
 
     file_exists = os.path.exists(tracking_file)
     rows = []
@@ -235,6 +215,10 @@ def initialize_tracking(model_id):
                 rows = list(reader)
                 if rows:
                     current_header = rows[0]
+                    # **FIXED: Detect corrupted CSV (header split across lines)**
+                    if len(rows) > 1 and len(rows[1]) == len(current_header) and rows[1][0] == "Model ID":
+                        print(f"🔧 DETECTED CORRUPTED CSV: Header split across lines in {tracking_file}. Fixing...")
+                        file_exists = False  # Force recreation
         except Exception as e:
             print(f"Warning: Could not read existing tracking file {tracking_file}: {e}. Will recreate.")
             file_exists = False # Treat as non-existent if unreadable
@@ -410,16 +394,12 @@ def update_tracking(model_id, data):
                  current_row[col_index] = str(value) # Ensure value is string
                  updated = True
         except ValueError:
-            # If key not in header, add it as a new column
-            header.append(key)
-            rows[0] = header # Update header row
-            # Add empty value for this new column to all previous rows
-            for i in range(1, len(rows)):
-                 rows[i].append("")
-            # Add the value to the current row's new column
-            current_row.append(str(value))
-            print(f"Added new column '{key}' to tracking file.")
-            updated = True
+            # FIXED: No more auto-column adding! This was causing CSV corruption.
+            # If column doesn't exist, FAIL FAST instead of silently corrupting the CSV.
+            print(f"ERROR: Column '{key}' does not exist in tracking file {tracking_file}")
+            print(f"Available columns: {header}")
+            print(f"ABORTING to prevent CSV corruption. Fix the script to use only existing columns.")
+            return tracking_file
             
     # Write updated data only if changes were made
     if updated:
@@ -456,6 +436,13 @@ def get_transect_status(model_id):
         return {} 
     
     header = rows[0]
+    
+    # **FIXED: Detect and handle corrupted CSV**
+    if len(rows) > 1 and len(rows[1]) == len(header) and rows[1][0] == "Model ID":
+        print(f"🔧 CORRUPTED CSV detected in get_transect_status. Recreating...")
+        initialize_tracking(model_id)
+        return {"Status": "Initialized"}  # Return basic status
+    
     id_index = -1
     
     # Find the Model ID column index

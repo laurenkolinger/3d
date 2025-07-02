@@ -57,18 +57,33 @@ cd 3d
 Create all necessary directories for your project:
 ```bash
 # From the workspace root, create the required directories
-mkdir -p {PROJECT_DIR}/{video_source,data,output}
+mkdir -p {PROJECT_DIR}/{video_source,processing,output}
 ```
 
 This will create the following directory structure:
 ```
 {PROJECT_DIR}/
-├── video_source/   # Input video files
-├── data/          # Data directory
-├── output/        # Output directory
+├── video_source/                    # Input video files
+├── processing/                      # Intermediate processing data
+│   ├── frames/                      # Extracted frames organized by model (Step 0)
+│   └── psxraw/                      # Initial PSX files (Step 1)
+└── output/                          # All final outputs
+    ├── psx/                         # Consolidated PSX files by site (Step 2)
+    ├── orthomosaics/                # Orthomosaic outputs (Step 3)
+    │   └── {MODEL_ID}/              # Each model in its own subdirectory
+    │       └── {MODEL_ID}.tif       # Clean model ID filename
+    ├── models/                      # 3D model outputs (Step 3)
+    │   └── {MODEL_ID}/              # Each model in its own subdirectory
+    │       ├── {MODEL_ID}.obj       # Clean model ID filename
+    │       └── [texture files]      # Associated texture files
+    ├── reports/                     # Processing reports (Step 3)
+    │   ├── {MODEL_ID}.pdf           # Clean model ID filename (flat structure)
+    │   └── {MODEL_ID}.pdf           # All reports in same directory
+    ├── logs/                        # Processing logs
+    └── final/                       # Final high-resolution outputs (Step 4)
 ```
 
-**Important:** Once this directory structure is created, do not rename or move the standard subdirectories (`video_source`, `data`, `output`). The scripts rely on this specific structure. The only manual change expected within `{PROJECT_DIR}` after setup is adding your video files to the `{PROJECT_DIR}/video_source/` directory.
+**Important:** Once this directory structure is created, do not rename or move the standard subdirectories (`video_source`, `processing`, `output`). The scripts rely on this specific structure. The only manual change expected within `{PROJECT_DIR}` after setup is adding your video files to the `{PROJECT_DIR}/video_source/` directory.
 
 Copy and configure the analysis parameters file:
 ```bash
@@ -82,7 +97,32 @@ Make sure to:
 
 1. Review and update the project name and notes inside the `{PROJECT_DIR}/analysis_params.yaml` file.
 2. Adjust any processing parameters within the `{PROJECT_DIR}/analysis_params.yaml` file as needed for your specific project.
-3. Note that the primary input/output directory paths (`video_source`, `data`, `output`, etc.) are typically derived automatically by the scripts based on the `{PROJECT_DIR}` you provide when running them. You usually do not need to define these explicitly in the YAML file unless you intend to override the default structure.
+3. Note that the primary input/output directory paths (`video_source`, `processing`, `output`, etc.) are typically derived automatically by the scripts based on the `{PROJECT_DIR}` you provide when running them. You usually do not need to define these explicitly in the YAML file unless you intend to override the default structure.
+
+## Standardized File Naming
+
+The pipeline uses a clean, standardized naming system for all outputs:
+
+- **Model ID Format:** All file names use the exact Model ID (e.g., `TCRMP20241014_3D_BWR_T2`)
+- **No Suffixes:** Files are named simply as `{MODEL_ID}.ext` (no `_textured_model` or `_manualScale` suffixes)
+- **Organized Structure:** 
+  - Orthomosaics and models get their own subdirectories: `output/orthomosaics/{MODEL_ID}/` and `output/models/{MODEL_ID}/`
+  - Reports are flat in `output/reports/{MODEL_ID}.pdf`
+- **Consistent Across Scripts:** Both `step3.py` and `step3_manualScale.py` produce identical file names and structure
+
+**Example Output:**
+```
+output/
+├── orthomosaics/
+│   └── TCRMP20241014_3D_BWR_T2/
+│       └── TCRMP20241014_3D_BWR_T2.tif
+├── models/
+│   └── TCRMP20241014_3D_BWR_T2/
+│       ├── TCRMP20241014_3D_BWR_T2.obj
+│       └── TCRMP20241014_3D_BWR_T2.jpg  # texture file
+└── reports/
+    └── TCRMP20241014_3D_BWR_T2.pdf
+```
 
 ### 3. Installing Dependencies
 
@@ -168,14 +208,14 @@ This will:
    - Filter points and optimize cameras
    - Build depth maps and create 3D model
    - Apply textures and generate report
-5. Save each batch as a separate PSX file in the `psx_input` directory
+5. Save each batch as a separate PSX file in the `psxraw` directory
 6. Create a batch summary CSV file mapping models to PSX files
 
 ### Manual Step: Quality Check & Alignment
 
 After Step 1, manually check the quality of the generated models and make any necessary adjustments:
 
-1. Open each PSX file in the `{PROJECT_DIR}/data/psx_input` directory with Metashape
+1. Open each PSX file in the `{PROJECT_DIR}/processing/psxraw` directory with Metashape
 2. For each model (chunk) in the project:
    - Review camera alignment and model quality
    - Ensure point cloud is clean and representative of the model
@@ -203,7 +243,7 @@ This will:
 
 After Step 2, manually straighten and scale each model:
 
-1. Open each project in the `05_outputs/psx` directory
+1. Open each project in the `output/psx/` directory
 2. For each chunk in the project:
 
    **Straightening:**
@@ -222,13 +262,13 @@ After Step 2, manually straighten and scale each model:
    - Press the Refresh button to update the scale
    - Verify that the error is less than 0.01
    
-3. Save the project
+3. Save the project, and QUIT metashape before running Step 3
 
-> **Note:** Make sure you are only working from ONE PSX file in the psx_input directory. The system should create just one processing status file and update that one file.
+> **Note:** Make sure you are only working from ONE PSX file in the psxraw directory. The system should create just one processing status file and update that one file.
 
 ### Step 3: Model Processing and Exports
 
-This step adds scale bars (if coded targets are present), removes small components, builds and exports orthomosaics, textured models, and reports.
+This step adds scale bars (if coded targets are present), removes small components, builds and exports orthomosaics, textured models, and reports using standardized file naming.
 
 **On macOS**:
 ```bash
@@ -238,16 +278,24 @@ This step adds scale bars (if coded targets are present), removes small componen
 /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3.py
 ```
 
+**For manual scale workflow:**
+```bash
+# Use this version if you manually added scale bars in Metashape
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3_manualScale.py {PROJECT_DIR}
+```
+
 This will:
 1. Load project configuration from the specified directory's `analysis_params.yaml` file
-2. Process each project in the `psx_output` directory
+2. Process each project in the `output/psx/` directory
 3. For each model (chunk) in the project:
-   - Add scale bars if coded targets are present
+   - Add scale bars if coded targets are present (step3.py only)
    - Remove small disconnected components from the model
-   - Build and export orthomosaic
-   - Export textured model
-   - Generate report
-4. Save exports to the appropriate directories
+   - Build and export orthomosaic to `output/orthomosaics/{MODEL_ID}/{MODEL_ID}.tif`
+   - Export textured model to `output/models/{MODEL_ID}/{MODEL_ID}.obj`
+   - Generate report as `output/reports/{MODEL_ID}.pdf`
+4. All outputs use clean Model ID naming (e.g., `TCRMP20241014_3D_BWR_T2`)
+
+**Output Structure:** Both `step3.py` and `step3_manualScale.py` produce identical file names and directory structure - the only difference is the scaling method used internally.
 
 ### Manual Step: Model Review and Touchups
 
@@ -324,16 +372,42 @@ See the configuration files for complete parameter descriptions.
 
 These scripts provide helpful utilities for managing the processing environment.
 
-### `src/utility/reset.sh`
+### `src/utility/reset_full.py`
 
-This shell script helps reset a project directory to a clean state. It can selectively remove output files, intermediate data, or the entire project structure based on command-line flags.
+**Complete Project Reset** - Resets project to **BEFORE Step 0** (frame extraction).
+
+**What it does:**
+- 🗑️ Empties `processing/` and `output/` directories completely
+- 📁 **Keeps** empty folder structure (`processing/`, `output/` directories remain)
+- 🗑️ Removes all tracking CSV files
+- 🔒 **Preserves:** `video_source/`, `analysis_params.yaml`, `.venv/`
 
 **Usage:**
 ```bash
-# Run from the workspace root
-./src/utility/reset.sh -d {PROJECT_DIR} [flags]
+python src/utility/reset_full.py /path/to/project
 ```
-Refer to the script comments for available flags and their functions.
+
+**When to use:** Starting completely over from the beginning (frame extraction).
+
+### `src/utility/reset_step1.py`
+
+**Reset After Step 1** - Preserves Steps 0 & 1, clears Steps 2+ outputs.
+
+**What it PRESERVES (the time-consuming work):**
+- 🔒 Step 0: Extracted frames (`processing/frames/`)
+- 🔒 Step 1: PSX files (`processing/psxraw/`)  
+- 🔒 Step 0 & Step 1 tracking status
+
+**What it CLEARS:**
+- 🗑️ Step 2+: All `output/` directory contents (consolidated PSX, orthomosaics, models, reports)
+- 🗑️ Step 2+ tracking status (resets to "Step 1 complete")
+
+**Usage:**
+```bash
+python src/utility/reset_step1.py /path/to/project
+```
+
+**When to use:** Re-running Step 2 (chunk management) and subsequent steps while preserving hours of Step 0 & Step 1 processing time.
 
 ### `src/utility/enumerate_gpus.py`
 
@@ -360,7 +434,7 @@ This Python script lists the available GPUs that Metashape can detect and use. T
 
 2. **PSX files not generated**
    
-   Ensure that the `psx_input` directory exists and is writable. Check the log file in the `reports` directory for error messages.
+   Ensure that the `psxraw` directory exists and is writable. Check the log file in the `reports` directory for error messages.
 
 3. **"Module 'numpy' has no attribute 'bool'"**
    
@@ -518,4 +592,4 @@ Each pass should be approximately 10 meters long and take about 1 minute, mainta
 
 ## Acknowledgments
 
-This project was developed for the Territorial Coral Reef Monitoring Program.
+This project was developed for the Territorial Coral Reef Monitoring Program. 

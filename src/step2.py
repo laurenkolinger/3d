@@ -39,7 +39,7 @@ def main():
         doc = Metashape.Document()
     
     # Define start and final directories for PSX files
-    psx_startdir = DIRECTORIES["psx_input"]
+    psx_startdir = DIRECTORIES["psxraw"]
     psx_finaldir = DIRECTORIES["psx_output"]
     
     # Create the output directory if it doesn't exist

@@ -98,9 +98,6 @@ processing:
       save_alpha: true               # Save alpha channel
       save_world: true               # Save world file
       save_xyz: true                 # Save XYZ coordinate file
-      tile_width: 2048               # Tile width for tiled export
-      tile_height: 2048              # Tile height for tiled export
-      compression: "LZW"             # Compression type: None, LZW, JPEG, Packbits
     model_export:
       format: "OBJ"                  # Model format: OBJ, 3DS, FBX, etc.
       texture_format: "JPEG"         # Texture format: JPEG, PNG, TIFF

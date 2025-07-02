@@ -334,8 +334,8 @@ def process_batch(transects, batch_num, timestamp):
     if not transects:
         return {}
     
-    # Create PSX path for this batch
-    os.makedirs(DIRECTORIES["psx_input"], exist_ok=True)
+    # Create psxraw directory if it doesn't exist
+    os.makedirs(DIRECTORIES["psxraw"], exist_ok=True)
     
     # Use transect name as filename if only 1 transect per PSX
     if len(transects) == 1 and MAX_CHUNKS_PER_PSX == 1:
@@ -343,8 +343,8 @@ def process_batch(transects, batch_num, timestamp):
     else:
         psx_filename = f"psx_{batch_num}_{timestamp}.psx"
     
-    psx_path = os.path.join(DIRECTORIES["psx_input"], psx_filename)
-    logging.info(f"Processing batch {batch_num} with {len(transects)} transects to {psx_path}")
+    # Create PSX file path
+    psx_path = os.path.join(DIRECTORIES["psxraw"], psx_filename)
     
     # Create a new document for this batch
     doc = Metashape.Document()
@@ -375,11 +375,12 @@ def process_batch(transects, batch_num, timestamp):
             
             # Create report for this transect
             try:
-                # Ensure reports directory exists
-                os.makedirs(DIRECTORIES["reports"], exist_ok=True)
+                # Use processing/reports_initial for step 1 reports
+                reports_initial_dir = os.path.join(DIRECTORIES["processing_root"], "reportsraw")
+                os.makedirs(reports_initial_dir, exist_ok=True)
                 
                 # Generate report
-                report_file_path = os.path.join(DIRECTORIES["reports"], f"{transect_id}_step1.pdf")
+                report_file_path = os.path.join(reports_initial_dir, f"{transect_id}_step1.pdf")
                 chunk.exportReport(report_file_path, title=f"Model {transect_id} - Step 1 Report")
                 
                 # Update tracking with report path
