@@ -3,9 +3,10 @@
 
 # Project Information
 project:
-  name: "2024_FLC_HBE_PBL_forGillian_23may2025" # Note: This name will be overridden by the directory name
+  name: "2024_BPT_BIT_GKT_CSE_PBL_forGillian_2july2025" # Note: This name will be overridden by the directory name
   notes: |
     running on big proxy files from the cinema raw encoding process. using various panama and trmp transect.
+    using 2024_BPT_BIT_GKT_CSE_PBL_forGillian_2july2025 as the project name.
 
 # Processing Parameters
 processing:
@@ -71,8 +72,8 @@ processing:
   ######## STOP HERE #########
   # Chunk Management (step2.py)
   chunk_management:
-    psx_startdir: "examples/2024_FLC_HBE_PBL_forGillian_23may2025/output"         # Starting directory for PSX files
-    psx_finaldir: "examples/2024_FLC_HBE_PBL_forGillian_23may2025/output"        # Final directory for PSX files
+    psx_startdir: "examples/2024_BPT_BIT_GKT_CSE_PBL_forGillian_2july2025/output"         # Starting directory for PSX files
+    psx_finaldir: "examples/2024_BPT_BIT_GKT_CSE_PBL_forGillian_2july2025/output"        # Final directory for PSX files
     chunk_quality:
       min_cameras: 0                 # Minimum number of aligned cameras for a quality chunk
       min_alignment_percentage: 0    # Minimum percentage of aligned cameras for a quality chunk
@@ -98,6 +99,9 @@ processing:
       save_alpha: true               # Save alpha channel
       save_world: true               # Save world file
       save_xyz: true                 # Save XYZ coordinate file
+      tile_width: 2048               # Tile width for tiled export
+      tile_height: 2048              # Tile height for tiled export
+      compression: "LZW"             # Compression type: None, LZW, JPEG, Packbits
     model_export:
       format: "OBJ"                  # Model format: OBJ, 3DS, FBX, etc.
       texture_format: "JPEG"         # Texture format: JPEG, PNG, TIFF
