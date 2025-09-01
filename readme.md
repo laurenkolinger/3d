@@ -10,6 +10,7 @@ This project provides a set of Python scripts to automate the workflow of proces
 
 - Agisoft Metashape Pro (v2.1.1 or later)
 - Python 3.9 (for both local environment and Metashape compatibility)
+- FFmpeg (for video frame extraction in Step 0)
 - Required Python packages (specific versions in `requirements.txt`):
   - PyYAML
   - pandas

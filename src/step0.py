@@ -718,7 +718,7 @@ def main():
     
     # Get list of video files
     video_files_paths = []
-    for ext in ['.mov', '.mp4', '.MOV', '.MP4']:
+    for ext in ['.mov', '.mp4', '.mkv', '.MOV', '.MP4', '.MKV']:
         video_files_paths.extend(Path(VIDEO_SOURCE_DIRECTORY).glob(f"*{ext}"))
     
     if not video_files_paths:
