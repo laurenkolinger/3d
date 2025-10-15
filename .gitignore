@@ -6,3 +6,6 @@
 examples/sample_project/ 
 examples/sample_project_raw/ 
 examples/
+.DS_Store
+examples/.DS_Store
+presets/.DS_Store
