@@ -1,10 +1,18 @@
-# 3D Processing Pipeline
+# 3D Modeling Procedure 
 
-A comprehensive workflow for processing 3D models from video footage.
+This repository has two main parts:
 
-## Overview
+1. **Automated Video-to-3D Pipeline:**  
+   A set of Python scripts that automate processing underwater video footage into high-quality 3D models using the Agisoft Metashape Python API. The workflow handles everything from image extraction, photogrammetry, and model export, with standardized centralized logging and documentation.  
 
-This project provides a set of Python scripts to automate the workflow of processing underwater video footage into 3D models of coral reefs. The pipeline uses Agisoft Metashape for 3D reconstruction and is designed to work with the Territorial Coral Reef Monitoring Program (TCRMP) methodology.
+2. **Field Methods Guide:**  
+   Detailed procedures for data collection in the field, including camera setup, maintenance, and standard filming techniques  
+
+ The workflow is designed for the Territorial Coral Reef Monitoring Program (TCRMP).
+
+# Part 1: Automated Video-to-3D Pipeline
+
+The processing step comes second, but is listed first since is the primary purpose of this repository. 
 
 ## Requirements
 
@@ -53,17 +61,25 @@ This project provides a set of Python scripts to automate the workflow of proces
 └── requirements.txt              # Python package dependencies
 ```
 
-## Initial Setup
 
-### 1. Repository Setup
+## Setting up this Repository (1x per machine where want code to exist)
 
-Clone this repository to your local machine:
+Clone this repository (or use cloned version in dropbox)
 ```bash
 git clone https://github.com/laurenkolinger/3d.git
 cd 3d
 ```
 
-### 2. Create Project Directory Structure
+## Setting up a Project to be processed from Code in the Repo  
+
+A project is a single set of processing (eg 1 TCRMP season/day, 1 thesis project, 1 test set) where analysis parameters are the same. 
+
+### Create Project Directory Structure (1x per project)
+
+set one shell Var and Reuse: 
+```bash
+export PROJECT_DIR=/path/to/project
+```
 
 Create all necessary directories for your project:
 ```bash
@@ -110,9 +126,22 @@ Make sure to:
 2. Adjust any processing parameters within the `{PROJECT_DIR}/analysis_params.yaml` file as needed for your specific project.
 3. Note that the primary input/output directory paths (`video_source`, `processing`, `output`, etc.) are derived automatically by the scripts based on the `{PROJECT_DIR}` you provide when running them. 
 
+### Local Environment Setup
+
+Create a Python virtual environment in your project:
+```bash
+# Create virtual environment in project directory using Python 3.9
+python3.9 -m venv {PROJECT_DIR}/.venv
+
+# Activate the virtual environment
+source {PROJECT_DIR}/.venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
 ## Standardized File Naming
 
-The pipeline uses a clean, standardized naming system for all outputs:
+We use a clean, standardized naming system for all outputs:
 
 - **Model ID Format:** All file names use the exact Model ID (e.g., `TCRMP20241014_3D_BWR_T2`)
 - **No Suffixes:** Files are named simply as `{MODEL_ID}.ext`
@@ -135,38 +164,6 @@ output/
     └── TCRMP20241014_3D_BWR_T2.pdf
 ```
 
-### 3. Installing Dependencies
-
-The pipeline requires dependencies in two Python environments:
-
-1. Your local environment (for frame extraction - step0.py)
-2. Metashape's Python environment (for 3D processing - step1.py and beyond)
-
-#### Local Environment Setup
-
-Create a Python virtual environment in your project:
-```bash
-# Create virtual environment in project directory using Python 3.9
-python3.9 -m venv {PROJECT_DIR}/.venv
-
-# Activate the virtual environment
-source {PROJECT_DIR}/.venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-#### Running Metashape Scripts
-
-To run Metashape scripts with the correct Python environment, you'll need to set the PYTHONPATH to point to your virtual environment's site-packages. This ensures Metashape uses the packages from your virtual environment while maintaining compatibility with Metashape's Python 3.9.
-
-The general format for running Metashape scripts is:
-```bash
-PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/stepX.py {PROJECT_DIR}
-```
-
-Where `stepX.py` is the specific step you want to run (step1.py, step2.py, etc.) and `{PROJECT_DIR}` is the path to your project directory containing `analysis_params.yaml`.
-
 ## Workflow Overview
 
 The complete processing workflow consists of the following steps:
@@ -182,9 +179,20 @@ The complete processing workflow consists of the following steps:
 
 **Note:** Each script will prompt for the project directory containing the `analysis_params.yaml` file if not provided as a command-line argument. This allows processing different projects without code modifications, as source files will be linked to individual project directories dynamically for each run.
 
+**Note about Running Metashape Scripts (Steps 2-4)**
+
+To run Metashape scripts with the correct Python environment, you'll need to set the PYTHONPATH to point to your virtual environment's site-packages. This ensures Metashape uses the packages from your virtual environment while maintaining compatibility with Metashape's Python 3.9.
+
+The general format for running Metashape scripts is:
+```bash
+PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/stepX.py {PROJECT_DIR}
+```
+
+Where `stepX.py` is the specific step you want to run (step1.py, step2.py, etc.) and `{PROJECT_DIR}` is the path to your project directory containing `analysis_params.yaml`.
+
 ## Detailed Workflow
 
-### Step 0: Frame Extraction
+### Step 0: Frame Extraction (Non Metashape)
 
 Extracts frames from video footage at a specified rate.
 
@@ -297,21 +305,6 @@ Creates final high-resolution outputs and uploads decimated models to Sketchfab 
 
 Creates decimated models for web, uploads to Sketchfab (if configured), exports high-resolution assets to `output/final/`.
 
-## Configuration
-
-Edit `{PROJECT_DIR}/analysis_params.yaml` for project-specific settings. Scripts automatically load configurations from this file, enabling processing of different projects without code modifications.
-
-### Key Configuration Parameters
-
-- **max_chunks_per_psx**: Maximum number of chunks/models per PSX file (default: 5)
-- **reconstruction_uncertainty**: Maximum allowable reconstruction uncertainty (default: 50)
-- **reprojection_error**: Maximum reprojection error in pixels (default: 1)
-- **projection_accuracy**: Maximum projection accuracy value (default: 10)
-- **depth_downscale**: Downscale factor for depth maps (default: 4)
-- **texture_size**: Texture size in pixels (default: 16384)
-
-See the configuration files for complete parameter descriptions.
-
 ## Utility Scripts
 
 These scripts provide helpful utilities for managing the processing environment.
@@ -388,9 +381,9 @@ This Python script lists the available GPUs that Metashape can detect and use. T
    
    If your Metashape version uses a different Python version than 3.9, you may need to modify the installation scripts to point to the correct Python interpreter.
 
-## Field Methods
+# Part 2: Field Methods Guide  
 
-### Required Materials
+## Required Materials
 
 - Camera system:
   - Camera with lights
@@ -412,16 +405,16 @@ This Python script lists the available GPUs that Metashape can detect and use. T
   - Slate
   - Vacuum device for housing seal check
 
-### Camera Setup and Maintenance
+## Camera Setup and Maintenance
 
-#### Regular Maintenance
+### Regular Maintenance
 - Camera cinema gear maintenance
 - Camera settings verification
 - Programmable button configuration
 - Housing maintenance (every few weeks or if leaks detected):
   - O-ring greasing
 
-#### Pre-Dive Preparation
+### Pre-Dive Preparation
 1. Day before:
    - Check housing and o-rings
    - Charge camera
@@ -460,44 +453,45 @@ This Python script lists the available GPUs that Metashape can detect and use. T
      - Destination: CFexpress
      - Frame rate: 59.94 fps
 
-### In-Water Procedures
+## In-Water Procedures
 
-#### Start of Dive
+### Start of Dive
 1. **B**uttons: Press all buttons to prime them
 2. **P**ower: 
-   - Turn on camera and lights (hold in/out buttons 1s, press middle button)
+   - Turn on camera and lights (for Kraken lights, hold in/out buttons 1s, press middle button)
    - Put lights to sleep (hold center 2s)
 3. **L**eaks: Monitor green light - if turns red, return to boat
 
-#### Transect and Camera Setup
+### Transect and Camera Setup
 1. **S**cale bars: 
-   - Place at each end of transect (more or less)
-   - One perpendicular-ish (45 deg angle), one parallel to transect
-   - Ensure circular targets are **visible** in footage and that scale bars **never move** during filming (if they do, restart)
+   - Place at each end of transect 
+   - One scale bar shoudl be ~ ~45 deg angle to transect, another parallel to transect. They should be set in a place where they will not move or wobble at all. 
+   - Ensure circular targets are **visible** in footage and that scale bars **never move** during filming
+   - If scale bars move / get moved before filming ends, the film is useless, and needs to be redone (restart filming right away if time / gas allows). 
 
 2. **T**ime code: Reset (Mode button)
+   - this helps reset time code to zero, so can keep proper time. 
 
 3. **A**rms: Extend to position lights as far apart as possible
 
-4. **L**ights: Turn on (hold Center Button 2 sec)
+4. **L**ights: Turn on (for Kraken lights, hold Center Button 2 sec)
 
 5. **W**hite balance: Press Button 13, hold camera over white part of scale bar
 
 6. **E**xposure: 
-   - Open WFM (Button 6) and false color (Button 9)
-   - Use F-stop dial to slightly overexpose (just below 100% on WFM)
+   - you should see wave form manager (WFM) on the screen. If not, press "Disp" to cycle through menu, or press button 6 to open WFM  
+   - Use ISO dial (top of camera, next to vacuum valve) to slightly overexpose (peaks should barely exceed 100% on WFM). ISO should ideally be < 10000 to avoid noisy footage   
 
 7. **A**ltitude: 
    - Position camera so viewfinder covers length of scale bar
-   - Note height (should be ~70cm)
+   - Note the altitude (height off bottom) of camera when viewing entire viewfinder (should be ~70cm)
    - Maintain this altitude throughout filming
 
 8. **R**ecord: 
    - Press Record button
    - Show transect number
-   - Verify autofocus
 
-#### Filming Protocol (4-Pass Method)
+### Filming Protocol (4-Pass Method)
 Each pass should be approximately 10 meters long and take about 1 minute, maintaining consistent altitude.
 
 1. **Pass 1**: 
@@ -518,17 +512,13 @@ Each pass should be approximately 10 meters long and take about 1 minute, mainta
    - Tilt camera 45°
    - Capture angled view of transect from either side
 
-#### Post-Filming
-- Press center button on each light for 2s to put lights to sleep
+After filming transect, if using Krakens, press center button on each light for 2s to put lights to sleep. If using Keldans, turn dial to off.
+After dive, Turn off Krakens (hold inner and outer buttons for 2s) or KEldans, turn dial to off, lock. Turn off camera.    
 
-## Running a Sample Project
+## Offloading memory card each day
 
-1. Clone this repository
-2. Navigate to the sample project directory: `cd examples/sample_project`
-3. Follow the setup instructions above
-4. Run each step in sequence, performing the manual steps between automated ones
-5. Check the output directories for results
+(coming soon)
 
-## Acknowledgments
+## Encoding CRAW video 
 
-This workflow was developed by Lauren Olinger for the Territorial Coral Reef Monitoring Program. 
+(coming soon)
