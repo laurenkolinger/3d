@@ -11,7 +11,7 @@ project:
 # Processing Parameters
 processing:
   # Frame Extraction (step0.py)
-  frames_per_transect: 1200  # Number of frames to extract per model (1200)
+  frames_per_transect: 1000  # Number of frames to extract per model (1200)
   # extraction_rate: 0.5      # 1.0 = all frames, 0.5 = every other frame
                             # Rate for extracting frames if frames_per_transect is 0.
                             # Determines the interval: 1.0 = every frame, 0.5 = every 2nd frame, 0.25 = every 4th frame etc.
@@ -20,7 +20,7 @@ processing:
   # Initial 3D Processing (step1.py)
   chunk_size: 1200  # Maximum number of frames per chunk (1200)
   use_gpu: true    # Whether to use GPU for processing
-  max_chunks_per_psx: 1     # Maximum number of chunks per PSX file for batch processing
+  max_chunks_per_psx: 4     # Maximum number of chunks per PSX file for batch processing
   metashape:
     defaults:
       # Point filtering thresholds
@@ -59,14 +59,14 @@ processing:
       # UV mapping
       mapping_mode: "GenericMapping"   # UV mapping mode: GenericMapping, OrthophotoMapping, AdaptiveOrthophotoMapping, SphericalMapping, CameraMapping
       texture_size: 16384              # Texture size in pixels (power of 2) (16384 = 128^2 ; 4096 = 64^2 ; 4096 = 32^2 ; 2048 = 16^2 ; 1024 = 8^2 ; 512 = 4^2 ; 256 = 2^2 ; 128 = 1^2) 
-      page_count: 4                    # Number of texture pages (4)
+      page_count: 1                    # Number of texture pages (4)
       
       # Texture building
       texture_type: "DiffuseMap"       # Texture type: DiffuseMap, NormalMap, OcclusionMap
       blending_mode: "MosaicBlending"  # Blending mode: AverageBlending, MosaicBlending, MaxBlending, MinBlending, DisabledBlending
       fill_holes: true                 # Fill texture holes
       ghosting_filter: true            # Filter ghosting artifacts
-      enable_gpu: true                # Use GPU for texture generation
+      enable_gpu: false                # Use GPU for texture generation
       relaxed_precision: true          # Use relaxed precision for texture generation
   
   ######## STOP HERE #########

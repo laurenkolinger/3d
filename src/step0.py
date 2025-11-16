@@ -15,6 +15,8 @@ import subprocess
 import tempfile
 import shutil
 import re
+import platform
+from concurrent.futures import ThreadPoolExecutor
 from config import (
     VIDEO_SOURCE_DIRECTORY,
     DIRECTORIES,
@@ -96,11 +98,29 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
     # Define output pattern for the frames using video_name and 5-digit counter
     output_pattern = os.path.join(output_dir, f"{video_name}_%05d.tiff")
     
-    # FFmpeg command for TIFF extraction with hardware acceleration
+    # Determine hardware acceleration based on OS and available hardware
+    system = platform.system()
+    if system == 'Darwin':  # macOS
+        hwaccel_args = []
+        decoder_args = ['-hwaccel', 'videotoolbox']
+        hwaccel_msg = "with videotoolbox hardware acceleration"
+    elif system == 'Linux':
+        # Use NVIDIA CUVID hardware decoder for HEVC
+        # This uses GPU for decoding but outputs to CPU for processing
+        hwaccel_args = []
+        decoder_args = ['-c:v', 'hevc_cuvid']
+        hwaccel_msg = "with NVIDIA NVDEC (hevc_cuvid) hardware acceleration"
+    else:
+        hwaccel_args = []
+        decoder_args = []
+        hwaccel_msg = "with software decoding"
+    
+    logging.info(f"Running on {system}, using FFmpeg {hwaccel_msg}")
+    
+    # FFmpeg command for TIFF extraction with GPU hardware decoding
     ffmpeg_cmd = [
-        'ffmpeg',
-        '-hwaccel', 'videotoolbox',     # Hardware acceleration
-        '-hwaccel_output_format', 'videotoolbox_vld',  # Force hardware decoding
+        'ffmpeg'
+    ] + decoder_args + [
         '-i', video_path,
         '-vf', f'fps={extract_fps}',    # Set frames per second for extraction
         '-c:v', 'tiff',                 # Use TIFF codec 
@@ -113,7 +133,7 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
     
     try:
         # Run FFmpeg with output visible to user
-        print("Running FFmpeg with hardware acceleration for TIFF extraction...")
+        print(f"Running FFmpeg {hwaccel_msg} for TIFF extraction...")
         
         process = subprocess.Popen(
             ffmpeg_cmd,
@@ -160,13 +180,10 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
         logging.error(f"FFmpeg error: {error_msg}")
         print(f"ERROR: FFmpeg failed: {error_msg}")
         
-        # Try simpler command without some options
-        print("Attempting simpler FFmpeg command...")
-        
-        # Simpler FFmpeg command without some options that might be causing problems
+        # Fall back to software decoding
+        print("Attempting with software decoding...")
         ffmpeg_cmd = [
             'ffmpeg',
-            '-hwaccel', 'videotoolbox',
             '-i', video_path,
             '-vf', f'fps={extract_fps}',
             '-pix_fmt', 'rgb24',
@@ -174,7 +191,7 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
         ]
         
         try:
-            subprocess.run(ffmpeg_cmd, check=True)
+            subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
             
             # Get list of extracted frames
             extracted_frame_paths = sorted([
@@ -184,7 +201,7 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
             frames_extracted = len(extracted_frame_paths)
             
         except Exception as e2:
-            logging.error(f"Second FFmpeg attempt failed: {str(e2)}")
+            logging.error(f"Software decoding also failed: {str(e2)}")
             return 0, [], video_length_seconds, total_frames
     
     if frames_extracted == 0:
@@ -247,14 +264,23 @@ def extract_frames_ffmpeg_alternative(video_path, output_dir, frames_per_transec
         #('.png', ['-c:v', 'png', '-pix_fmt', 'rgb24', '-compression_level', '0'])  # PNG lossless
     ]
     
+    # Determine hardware acceleration based on OS
+    system = platform.system()
+    if system == 'Darwin':  # macOS
+        decoder_args = ['-hwaccel', 'videotoolbox']
+    elif system == 'Linux':
+        decoder_args = ['-c:v', 'hevc_cuvid']
+    else:
+        decoder_args = []  # Windows - use software decoding
+    
     # Find which format works with this video
     working_format = None
     for ext, params in formats_to_try:
         try:
             test_output = os.path.join(output_dir, f"test_frame{ext}")
             test_cmd = [
-                'ffmpeg',
-                '-hwaccel', 'videotoolbox',
+                'ffmpeg'
+            ] + decoder_args + [
                 '-ss', '0',
                 '-i', video_path,
                 '-vframes', '1'
@@ -293,8 +319,8 @@ def extract_frames_ffmpeg_alternative(video_path, output_dir, frames_per_transec
         
         # Extract this specific frame
         frame_cmd = [
-            'ffmpeg',
-            '-hwaccel', 'videotoolbox',
+            'ffmpeg'
+        ] + decoder_args + [
             '-ss', str(timestamp),
             '-i', video_path,
             '-vframes', '1'
@@ -368,6 +394,15 @@ def extract_frames_ffmpeg_png(video_path, output_dir, frames_per_transect, video
     extracted_frame_paths = []
     frames_extracted = 0
     
+    # Determine hardware acceleration based on OS
+    system = platform.system()
+    if system == 'Darwin':  # macOS
+        decoder_args = ['-hwaccel', 'videotoolbox']
+    elif system == 'Linux':
+        decoder_args = ['-c:v', 'hevc_cuvid']
+    else:
+        decoder_args = []  # Windows - use software decoding
+    
     print(f"Starting direct PNG extraction of {len(frame_indices)} frames...")
     logging.info(f"Using direct PNG extraction method for highest quality")
     
@@ -386,8 +421,8 @@ def extract_frames_ffmpeg_png(video_path, output_dir, frames_per_transect, video
         
         # Extract just this one frame as PNG (lossless)
         frame_cmd = [
-            'ffmpeg',
-            '-hwaccel', 'videotoolbox',
+            'ffmpeg'
+        ] + decoder_args + [
             '-ss', str(timestamp),   # Seek to timestamp
             '-i', video_path,
             '-vframes', '1',         # Extract just one frame
@@ -657,17 +692,29 @@ def process_transect(transect_id, video_paths_for_transect):
                 )
 
                 if num_actually_extracted > 0:
-                    temp_frame_paths.sort() 
+                    temp_frame_paths.sort()
                     
-                    for src_frame_path in temp_frame_paths:
+                    # Prepare move operations in parallel
+                    move_operations = []
+                    for i, src_frame_path in enumerate(temp_frame_paths):
                         file_extension = os.path.splitext(src_frame_path)[1]
                         # Ensure target_frame_name uses transect_id for global naming
-                        target_frame_name = f"{transect_id}_{global_frame_output_counter:05d}{file_extension}"
+                        target_frame_name = f"{transect_id}_{global_frame_output_counter + i:05d}{file_extension}"
                         target_frame_path_final = os.path.join(output_dir_final, target_frame_name)
-                        
-                        shutil.move(src_frame_path, target_frame_path_final)
-                        all_final_frame_paths.append(target_frame_path_final)
-                        global_frame_output_counter += 1
+                        move_operations.append((src_frame_path, target_frame_path_final))
+                    
+                    # Parallel file moving using ThreadPoolExecutor
+                    def move_file(src_dst_tuple):
+                        src, dst = src_dst_tuple
+                        shutil.move(src, dst)
+                        return dst
+                    
+                    print(f"Moving {len(move_operations)} frames in parallel...")
+                    with ThreadPoolExecutor(max_workers=min(32, len(move_operations))) as executor:
+                        moved_paths = list(executor.map(move_file, move_operations))
+                    
+                    all_final_frame_paths.extend(moved_paths)
+                    global_frame_output_counter += len(moved_paths)
                 
                 cumulative_frames_extracted_count += num_actually_extracted
             
@@ -720,6 +767,9 @@ def main():
     video_files_paths = []
     for ext in ['.mov', '.mp4', '.mkv', '.MOV', '.MP4', '.MKV']:
         video_files_paths.extend(Path(VIDEO_SOURCE_DIRECTORY).glob(f"*{ext}"))
+    
+    # Filter out macOS metadata files (AppleDouble format) that start with "._"
+    video_files_paths = [p for p in video_files_paths if not p.name.startswith('._')]
     
     if not video_files_paths:
         logging.error(f"No video files found in {VIDEO_SOURCE_DIRECTORY}")
