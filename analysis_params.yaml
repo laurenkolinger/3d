@@ -3,10 +3,9 @@
 
 # Project Information
 project:
-  name: "2024_BPT_BIT_GKT_CSE_PBL_forGillian_2july2025" # Note: This name will be overridden by the directory name
+  name: "settings version 13 dec 2025 (based on panama 2025 run)" # Note: This name will be overridden by the directory name
   notes: |
-    running on big proxy files from the cinema raw encoding process. using various panama and trmp transect.
-    using 2024_BPT_BIT_GKT_CSE_PBL_forGillian_2july2025 as the project name.
+     
 
 # Processing Parameters
 processing:
@@ -32,8 +31,8 @@ processing:
       keypoint_limit: 40000           # Maximum number of keypoints per image
       tiepoint_limit: 4000            # Maximum number of tie points per image pair
       downscale: 1                    # Downscale factor for photos (1=highest quality, no downscaling)
-      generic_preselection: true      # Use image content for pre-selecting image pairs
-      reference_preselection: true    # Use image metadata for pre-selecting image pairs  
+      generic_preselection: false      # Use image content for pre-selecting image pairs
+      reference_preselection: false    # Use image metadata for pre-selecting image pairs  
       filter_stationary_points: false # Filter stationary points that don't contribute to the geometry
       
       # Camera optimization
@@ -42,7 +41,7 @@ processing:
       
       # Depth map parameters
       depth_downscale: 1             # Downscale factor for depth maps (1= no downscale, 4=medium quality) (1)
-      depth_filter_mode: "NoFiltering" # Depth map filtering mode: NoFiltering, MildFiltering, ModerateFiltering, AggressiveFiltering
+      depth_filter_mode: "MildFiltering" # Depth map filtering mode: NoFiltering, MildFiltering, ModerateFiltering, AggressiveFiltering
       
       # Model building parameters
       surface_type: "Arbitrary"        # Surface type: Arbitrary (freeform) or HeightField (flat surface)

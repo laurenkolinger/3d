@@ -12,11 +12,8 @@ import numpy as np
 from pathlib import Path
 import logging
 import subprocess
-import tempfile
-import shutil
 import re
 import platform
-from concurrent.futures import ThreadPoolExecutor
 from config import (
     VIDEO_SOURCE_DIRECTORY,
     DIRECTORIES,
@@ -38,7 +35,7 @@ logging.basicConfig(
     ]
 )
 
-def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_name):
+def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_name, start_number=1):
     """
     Extract frames from a video file using FFmpeg with TIFF format (rgb24) and hardware acceleration.
     
@@ -47,6 +44,7 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
         output_dir (str): Directory to save frames
         frames_per_transect (int): Number of frames to extract. Must be > 0 if called.
         video_name (str): Base name of the video file for frame naming within output_dir
+        start_number (int): Starting frame number for output filenames (default: 1)
     
     Returns:
         tuple: (frames_extracted, extracted_frame_paths, video_length_seconds, total_video_frames)
@@ -92,30 +90,22 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
     logging.info(f"Setting fps={extract_fps} to extract {frames_per_transect} frames from {video_length_seconds:.2f}s video for {video_name}")
     
     # Extract frames using FFmpeg with TIFF format
-    logging.info(f"Extracting frames using TIFF format with rgb24")
-    print(f"Starting TIFF frame extraction from {os.path.basename(video_path)}")
+    logging.info(f"Extracting frames using 16-bit TIFF format with rgb48le")
+    print(f"Starting 16-bit TIFF frame extraction from {os.path.basename(video_path)}")
     
     # Define output pattern for the frames using video_name and 5-digit counter
     output_pattern = os.path.join(output_dir, f"{video_name}_%05d.tiff")
     
-    # Determine hardware acceleration based on OS and available hardware
+    # Hardware acceleration setup
     system = platform.system()
     if system == 'Darwin':  # macOS
-        hwaccel_args = []
         decoder_args = ['-hwaccel', 'videotoolbox']
-        hwaccel_msg = "with videotoolbox hardware acceleration"
+        logging.info("Using VideoToolbox hardware acceleration")
     elif system == 'Linux':
-        # Use NVIDIA CUVID hardware decoder for HEVC
-        # This uses GPU for decoding but outputs to CPU for processing
-        hwaccel_args = []
-        decoder_args = ['-c:v', 'hevc_cuvid']
-        hwaccel_msg = "with NVIDIA NVDEC (hevc_cuvid) hardware acceleration"
+        decoder_args = ['-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda']
+        logging.info("Attempting CUDA hardware acceleration")
     else:
-        hwaccel_args = []
         decoder_args = []
-        hwaccel_msg = "with software decoding"
-    
-    logging.info(f"Running on {system}, using FFmpeg {hwaccel_msg}")
     
     # FFmpeg command for TIFF extraction with GPU hardware decoding
     ffmpeg_cmd = [
@@ -124,8 +114,9 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
         '-i', video_path,
         '-vf', f'fps={extract_fps}',    # Set frames per second for extraction
         '-c:v', 'tiff',                 # Use TIFF codec 
-        '-pix_fmt', 'rgb24',            # Standard 8-bit RGB
+        '-pix_fmt', 'rgb48le',          # 16-bit RGB (little-endian) for better quality
         '-compression_level', '0',      # No compression
+        '-start_number', str(start_number),  # Set starting frame number
         '-v', 'info',                   # Show information
         '-stats',                       # Show progress
         output_pattern
@@ -133,7 +124,7 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
     
     try:
         # Run FFmpeg with output visible to user
-        print(f"Running FFmpeg {hwaccel_msg} for TIFF extraction...")
+        print(f"Running FFmpeg for 16-bit TIFF extraction...")
         
         process = subprocess.Popen(
             ffmpeg_cmd,
@@ -166,7 +157,7 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
         # Check size of first frame
         if frames_extracted > 0:
             size_mb = os.path.getsize(extracted_frame_paths[0]) / (1024 * 1024)
-            print(f"First TIFF frame size: {size_mb:.2f} MB")
+            print(f"First 16-bit TIFF frame size: {size_mb:.2f} MB")
         else:
             print("No frames were extracted!")
     
@@ -186,7 +177,9 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
             'ffmpeg',
             '-i', video_path,
             '-vf', f'fps={extract_fps}',
-            '-pix_fmt', 'rgb24',
+            '-c:v', 'tiff',
+            '-pix_fmt', 'rgb48le',
+            '-compression_level', '0',
             output_pattern
         ]
         
@@ -208,8 +201,8 @@ def extract_frames_ffmpeg(video_path, output_dir, frames_per_transect, video_nam
         logging.error("No frames were extracted!")
         print("ERROR: Failed to extract any frames")
     else:
-        logging.info(f"Successfully extracted {frames_extracted} TIFF frames")
-        print(f"SUCCESS: Extracted {frames_extracted} TIFF frames to {output_dir}")
+        logging.info(f"Successfully extracted {frames_extracted} 16-bit TIFF frames")
+        print(f"SUCCESS: Extracted {frames_extracted} 16-bit TIFF frames to {output_dir}")
     
     return frames_extracted, extracted_frame_paths, video_length_seconds, total_frames
 
@@ -258,20 +251,17 @@ def extract_frames_ffmpeg_alternative(video_path, output_dir, frames_per_transec
     
     # Try each format in order of preference until one works
     formats_to_try = [
-        # ('.exr', ['-c:v', 'exr', '-pix_fmt', 'rgb48le']),  # EXR format (best for HDR)
-        # ('.tiff', ['-c:v', 'tiff', '-pix_fmt', 'rgb48']),   # 16-bit TIFF
-        ('.tiff', ['-c:v', 'tiff', '-pix_fmt', 'rgb24'])   # 8-bit TIFF
-        #('.png', ['-c:v', 'png', '-pix_fmt', 'rgb24', '-compression_level', '0'])  # PNG lossless
+        ('.tiff', ['-c:v', 'tiff', '-pix_fmt', 'rgb48le']),   # 16-bit TIFF
     ]
     
-    # Determine hardware acceleration based on OS
+    # Hardware acceleration
     system = platform.system()
-    if system == 'Darwin':  # macOS
+    if system == 'Darwin':
         decoder_args = ['-hwaccel', 'videotoolbox']
     elif system == 'Linux':
-        decoder_args = ['-c:v', 'hevc_cuvid']
+        decoder_args = ['-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda']
     else:
-        decoder_args = []  # Windows - use software decoding
+        decoder_args = []
     
     # Find which format works with this video
     working_format = None
@@ -394,14 +384,14 @@ def extract_frames_ffmpeg_png(video_path, output_dir, frames_per_transect, video
     extracted_frame_paths = []
     frames_extracted = 0
     
-    # Determine hardware acceleration based on OS
+    # Hardware acceleration
     system = platform.system()
-    if system == 'Darwin':  # macOS
+    if system == 'Darwin':
         decoder_args = ['-hwaccel', 'videotoolbox']
     elif system == 'Linux':
-        decoder_args = ['-c:v', 'hevc_cuvid']
+        decoder_args = ['-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda']
     else:
-        decoder_args = []  # Windows - use software decoding
+        decoder_args = []
     
     print(f"Starting direct PNG extraction of {len(frame_indices)} frames...")
     logging.info(f"Using direct PNG extraction method for highest quality")
@@ -681,45 +671,19 @@ def process_transect(transect_id, video_paths_for_transect):
 
             logging.info(f"Extracting {frames_to_extract_for_this_part} frames from part {part_path} (duration: {part_duration:.2f}s) for transect {transect_id}")
             
-            temp_part_output_dir = tempfile.mkdtemp(prefix=f"{part_basename}_frames_")
-            
-            try:
-                num_actually_extracted, temp_frame_paths, _, _ = extract_frames_ffmpeg(
-                    part_path,
-                    temp_part_output_dir,
-                    frames_to_extract_for_this_part,
-                    part_basename 
-                )
+            num_actually_extracted, frame_paths, _, _ = extract_frames_ffmpeg(
+                part_path,
+                output_dir_final,
+                frames_to_extract_for_this_part,
+                transect_id,
+                start_number=global_frame_output_counter
+            )
 
-                if num_actually_extracted > 0:
-                    temp_frame_paths.sort()
-                    
-                    # Prepare move operations in parallel
-                    move_operations = []
-                    for i, src_frame_path in enumerate(temp_frame_paths):
-                        file_extension = os.path.splitext(src_frame_path)[1]
-                        # Ensure target_frame_name uses transect_id for global naming
-                        target_frame_name = f"{transect_id}_{global_frame_output_counter + i:05d}{file_extension}"
-                        target_frame_path_final = os.path.join(output_dir_final, target_frame_name)
-                        move_operations.append((src_frame_path, target_frame_path_final))
-                    
-                    # Parallel file moving using ThreadPoolExecutor
-                    def move_file(src_dst_tuple):
-                        src, dst = src_dst_tuple
-                        shutil.move(src, dst)
-                        return dst
-                    
-                    print(f"Moving {len(move_operations)} frames in parallel...")
-                    with ThreadPoolExecutor(max_workers=min(32, len(move_operations))) as executor:
-                        moved_paths = list(executor.map(move_file, move_operations))
-                    
-                    all_final_frame_paths.extend(moved_paths)
-                    global_frame_output_counter += len(moved_paths)
-                
-                cumulative_frames_extracted_count += num_actually_extracted
+            if num_actually_extracted > 0:
+                all_final_frame_paths.extend(sorted(frame_paths))
+                global_frame_output_counter += num_actually_extracted
             
-            finally:
-                shutil.rmtree(temp_part_output_dir)
+            cumulative_frames_extracted_count += num_actually_extracted
 
         end_time = datetime.datetime.now()
         processing_time = (end_time - start_time).total_seconds()
