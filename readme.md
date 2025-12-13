@@ -25,7 +25,7 @@ The processing step comes second, but is listed first since is the primary purpo
   - opencv-python
   - matplotlib
   - pillow
-- **Note:** This pipeline has been developed and tested primarily on macOS. Compatibility and performance on Windows or Linux are not guaranteed.
+- **Note:** This pipeline has been developed and tested primarily on macOS & Linux. Compatibility on windows is not guaranteed.
 
 ## Project Structure
 
@@ -85,7 +85,7 @@ Create all necessary directories for your project:
 
 ```bash
 # From the workspace root, create the required directories
-mkdir -p {PROJECT_DIR}/{video_source,processing,output}
+mkdir -p $PROJECT_DIR/{video_source,processing,output}
 ```
 
 This will create the following directory structure:
@@ -118,7 +118,7 @@ Copy and configure the analysis parameters file:
 
 ```bash
 # Copy the base configuration file to your project
-cp analysis_params.yaml {PROJECT_DIR}/
+cp analysis_params.yaml $PROJECT_DIR/
 ```
 
 The configuration file (`analysis_params.yaml`) located within your `{PROJECT_DIR}` contains all the settings for the project.
@@ -135,10 +135,10 @@ Create a Python virtual environment in your project:
 
 ```bash
 # Create virtual environment in project directory using Python 3.9
-python3.9 -m venv {PROJECT_DIR}/.venv
+python3.9 -m venv $PROJECT_DIR/.venv
 
 # Activate the virtual environment
-source {PROJECT_DIR}/.venv/bin/activate
+source $PROJECT_DIR/.venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -192,7 +192,7 @@ To run Metashape scripts with the correct Python environment, you'll need to set
 The general format for running Metashape scripts is:
 
 ```bash
-PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/stepX.py {PROJECT_DIR}
+PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/stepX.py $PROJECT_DIR
 ```
 
 Where `stepX.py` is the specific step you want to run (step1.py, step2.py, etc.) and `{PROJECT_DIR}` is the path to your project directory containing `analysis_params.yaml`.
@@ -204,7 +204,7 @@ Where `stepX.py` is the specific step you want to run (step1.py, step2.py, etc.)
 Extracts frames from video footage at a specified rate.
 
 ```bash
-python src/step0.py {PROJECT_DIR}
+python src/step0.py $PROJECT_DIR
 ```
 
 Scans `video_source/` for videos, extracts frames to `processing/frames/`, and creates tracking CSV files.
@@ -214,7 +214,7 @@ Scans `video_source/` for videos, extracts frames to `processing/frames/`, and c
 Performs initial 3D reconstruction using extracted frames. Creates batched PSX files with multiple models grouped for efficiency.
 
 ```bash
-PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step1.py {PROJECT_DIR}
+PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step1.py $PROJECT_DIR
 ```
 
 Groups models into batches, aligns cameras, builds depth maps, creates 3D models with textures, and saves to `processing/psxraw/`.
@@ -232,7 +232,7 @@ After Step 1, manually check the quality of generated models:
 Consolidates chunks by site to prepare for final processing.
 
 ```bash
-PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py {PROJECT_DIR}
+PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py $PROJECT_DIR
 ```
 
 Groups models by site and creates new PSX files organized by site in `output/psx/`.
@@ -268,7 +268,7 @@ This step processes models with scaling, removes small components, and exports o
 
 ```bash
 # Run automatic scaling first (detects coded targets)
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3.py {PROJECT_DIR}
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3.py $PROJECT_DIR
 ```
 
 **If automatic scaling fails or no coded targets are present:**
@@ -277,14 +277,14 @@ This step processes models with scaling, removes small components, and exports o
 
 ```bash
 # Reset to preserve Step 0&1 work, clear Step 2+ outputs
-python src/utility/reset_step1.py {PROJECT_DIR}
+python src/utility/reset_step1.py $PROJECT_DIR
 
 # Re-run Step 2 (this is pretty quick)
-PYTHONPATH={PROJECT_DIR}/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py {PROJECT_DIR}
+PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py $PROJECT_DIR
 
 # Manually straighten and add scale bars in Metashape GUI (see Manual Step above)
 # Then run manual scale processing:
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3_manualScale.py {PROJECT_DIR}
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3_manualScale.py $PROJECT_DIR
 ```
 
 **Alternative: Start with Manual Scaling**
@@ -309,7 +309,7 @@ After Step 3, manually review and touch up the models:
 Creates final high-resolution outputs and uploads decimated models to Sketchfab for web viewing.
 
 ```bash
-/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step4.py {PROJECT_DIR}
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step4.py $PROJECT_DIR
 ```
 
 Creates decimated models for web, uploads to Sketchfab (if configured), exports high-resolution assets to `output/final/`.

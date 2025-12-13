@@ -10,3 +10,4 @@ examples/
 examples/.DS_Store
 presets/.DS_Store
 run/
+.cursor
