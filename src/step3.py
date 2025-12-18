@@ -1,13 +1,14 @@
 """
-Step 3: Model Processing and Exports
+Step 3: Dual Model Export (High-Poly and Low-Poly)
 
-This script:
-1. Adds scale bars to the model (if coded targets are present)
-2. Removes small disconnected components
-3. Exports orthomosaic
-4. Exports textured model
-5. Exports report
-6. Saves the project
+This script processes Scale=PASS models to generate production-ready outputs:
+1. High-poly model export
+2. Low-poly model creation (decimated + retextured)
+3. Orthomosaic generation (full + tiled)
+4. Report exports
+
+Works on: processing/psxraw/*.psx files
+Processes: Only chunks where Scale=PASS
 """
 
 import os
@@ -19,546 +20,482 @@ from config import (
     PROJECT_NAME,
     get_tracking_files,
     update_tracking,
+    get_transect_status,
     PARAMS,
-    get_transect_status
+    TIMESTAMP
 )
 import datetime
+import time
 from utility.file_naming import get_export_paths, clean_model_id
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(os.path.join(DIRECTORIES["logs"], f"step3_{PROJECT_NAME}.log")),
+        logging.FileHandler(os.path.join(DIRECTORIES["logs"], f"step3_dual_export_{PROJECT_NAME}_{TIMESTAMP}.log")),
         logging.StreamHandler()
     ]
 )
 
-def find_marker_by_label(chunk, label):
+def export_hipoly_model(chunk, model_id, base_output_dir, config):
     """
-    Find a marker in the chunk by its label.
+    Export high-poly model with texture.
     
     Args:
-        chunk (Metashape.Chunk): The chunk to search in
-        label (str): The marker label to find
-        
-    Returns:
-        Metashape.Marker or None: The found marker or None if not found
-    """
-    for marker in chunk.markers:
-        if marker.label == label:
-            return marker
-    return None
-
-def add_scale_bars(chunk, has_coded_scales, scale_bars):
-    """
-    Add scale bars to the model and properly apply scaling.
-    
-    Args:
-        chunk (Metashape.Chunk): The chunk to process
-        has_coded_scales (bool): Whether coded scales are present
-        scale_bars (list): List of scale bar definitions (start_marker, end_marker, distance)
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    if not has_coded_scales:
-        logging.info("Coded scales are not present. Skipping scale bar addition.")
-        return True
-    
-    try:
-        # Detect circular 20-bit markers first
-        logging.info("Detecting circular 20-bit coded targets...")
-        chunk.detectMarkers(target_type=Metashape.TargetType.CircularTarget20bit)
-        logging.info(f"Found {len(chunk.markers)} markers after detection")
-        
-        scale_bars_added = 0
-        for scale_bar_def in scale_bars:
-            start_marker = find_marker_by_label(chunk, scale_bar_def["start_marker"])
-            end_marker = find_marker_by_label(chunk, scale_bar_def["end_marker"])
-            
-            if start_marker and end_marker:
-                scale_bar = chunk.addScalebar(start_marker, end_marker)
-                
-                # Set scale bar reference properties
-                scale_bar.reference.distance = scale_bar_def["distance"]
-                scale_bar.reference.enabled = True  # Enable the reference!
-                scale_bar.reference.accuracy = 0.001  # Set accuracy to 1mm
-                
-                scale_bars_added += 1
-                logging.info(f"Added scale bar between {scale_bar_def['start_marker']} and {scale_bar_def['end_marker']} with distance {scale_bar_def['distance']}m")
-            else:
-                missing = []
-                if not start_marker:
-                    missing.append(scale_bar_def['start_marker'])
-                if not end_marker:
-                    missing.append(scale_bar_def['end_marker'])
-                logging.warning(f"Could not find markers: {', '.join(missing)}")
-        
-        # Apply scaling if scale bars were added
-        if scale_bars_added > 0:
-            logging.info("Updating chunk transformation based on scale bars...")
-            chunk.updateTransform()
-            
-            # Log the current region and transform information for debugging
-            if chunk.region:
-                logging.info(f"Chunk region size after scaling: {chunk.region.size}")
-            if chunk.transform:
-                logging.info(f"Chunk scale factor: {chunk.transform.scale}")
-            
-            # List all scale bars and their settings
-            for scalebar in chunk.scalebars:
-                logging.info(f"Scale bar '{scalebar.label}': distance={scalebar.reference.distance}m, enabled={scalebar.reference.enabled}")
-            
-            logging.info(f"Successfully added and applied {scale_bars_added} scale bars to chunk {chunk.label}")
-            return True
-        else:
-            logging.warning(f"No scale bars could be added to chunk {chunk.label}")
-            return False
-            
-    except Exception as e:
-        logging.error(f"Error adding scale bars: {str(e)}")
-        return False
-
-def ground_model(chunk):
-    """
-    Ground the model by translating it so the minimum Z coordinate becomes 0.
-    
-    Args:
-        chunk (Metashape.Chunk): The chunk to process
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    try:
-        model = chunk.model
-        if model is None:
-            logging.warning("No model found in chunk - skipping grounding")
-            return False
-        
-        if not model.vertices or len(model.vertices) == 0:
-            logging.warning("Model has no vertices - skipping grounding")
-            return False
-        
-        # Calculate minimum Z coordinate in world coordinates
-        min_z = min(
-            (chunk.transform.matrix * Metashape.Vector([v.coord.x, v.coord.y, v.coord.z, 1])).z
-            for v in model.vertices
-        )
-        
-        # Create translation matrix to move model to ground level
-        T = Metashape.Matrix().Translation(Metashape.Vector([0, 0, -min_z]))
-        
-        # Apply translation to chunk transform
-        chunk.transform.matrix = T * chunk.transform.matrix
-        
-        logging.info(f"Model grounded: chunk offset dz = {-min_z:.4f}m. Minimum Z is now zero.")
-        return True
-        
-    except Exception as e:
-        logging.error(f"Error grounding model: {str(e)}")
-        return False
-
-def remove_small_components(chunk, min_faces=100):
-    """
-    Remove small disconnected components from the model.
-    
-    Args:
-        chunk (Metashape.Chunk): The chunk to process
-        min_faces (int): Minimum number of faces for a component to be kept
-        
-    Returns:
-        int: Number of components removed
-    """
-    # Ensure there's a model in the chunk
-    if not chunk.model:
-        logging.warning("No model found in the chunk. Cannot remove small components.")
-        return 0
-
-    logging.info("Starting component analysis...")
-    
-    # Get the initial number of components
-    num_components_before = chunk.model.statistics().components
-    
-    if num_components_before <= 1:
-        logging.info("Only one component found. No removal necessary.")
-        return 0
-    
-    # Remove small components (keeping largest 1%)
-    chunk.model.removeComponents(99)
-    
-    # Get the final number of components
-    num_components_after = chunk.model.statistics().components
-    
-    num_removed = num_components_before - num_components_after
-       
-    logging.info(f"Removed {num_removed} components. Model now has {num_components_after} components.")
-    return num_removed
-
-def export_orthomosaic(chunk, base_output_dir, compression):
-    """
-    Build and export orthomosaic with standardized naming.
-    
-    Args:
-        chunk (Metashape.Chunk): The chunk to process
+        chunk (Metashape.Chunk): The chunk to export
+        model_id (str): Clean model ID
         base_output_dir (str): Base output directory
-        compression (Metashape.ImageCompression): Compression settings
+        config (dict): Export configuration
         
     Returns:
-        bool: True if successful, False otherwise
+        bool: True if successful
     """
     try:
-        # Get standardized export paths
-        model_id = clean_model_id(chunk.label)
         paths = get_export_paths(model_id, base_output_dir)
-        ortho_path = paths['orthomosaic']['file']
+        model_dir = paths['model']['dir']
+        os.makedirs(model_dir, exist_ok=True)
         
-        # Build orthomosaic if it hasn't been built yet
-        if not chunk.orthomosaic:
-            logging.info("Building orthomosaic...")
-            config = PARAMS['processing']['model_processing']
-            chunk.buildOrthomosaic(
-                surface_data=Metashape.DataSource.ModelData,
-                blending_mode=getattr(Metashape.BlendingMode, config["orthomosaic"]["blending_mode"]),
-                fill_holes=config["orthomosaic"]["fill_holes"]
-            )
-                 
-        # Get configuration and check resolution sanity
-        config = PARAMS['processing']['model_processing']
-        requested_resolution = config["orthomosaic"]["resolution"]
+        model_path = os.path.join(model_dir, f"{model_id}_hipoly.obj")
         
-        # Calculate expected raster size based on region size and resolution
-        if chunk.region and chunk.region.size:
-            region_size = chunk.region.size
-            expected_width = int(region_size.x / requested_resolution)
-            expected_height = int(region_size.y / requested_resolution)
-            
-            logging.info(f"Region size: {region_size.x:.2f} x {region_size.y:.2f} m")
-            logging.info(f"Requested resolution: {requested_resolution} m/pixel")
-            logging.info(f"Expected raster size: {expected_width} x {expected_height} pixels")
-            
-            # Sanity check: if raster would be larger than 20,000 pixels in any dimension, use coarser resolution
-            max_dimension = 20000
-            if expected_width > max_dimension or expected_height > max_dimension:
-                # Calculate minimum resolution to keep under max dimension
-                min_resolution_x = region_size.x / max_dimension
-                min_resolution_y = region_size.y / max_dimension
-                safe_resolution = max(min_resolution_x, min_resolution_y, 0.005)  # At least 5mm
-                
-                logging.warning(f"Requested resolution would create {expected_width}x{expected_height} raster!")
-                logging.warning(f"Using safer resolution: {safe_resolution:.4f} m/pixel instead")
-                actual_resolution = safe_resolution
-            else:
-                actual_resolution = requested_resolution
-        else:
-            logging.warning("No region information available, using requested resolution")
-            actual_resolution = requested_resolution
+        model_export_config = config['model_export']
         
-        logging.info(f"Exporting orthomosaic with resolution: {actual_resolution} m/pixel")
-        
-        try:
-            chunk.exportRaster(
-                path=ortho_path,
-                resolution=actual_resolution,
-                source_data=Metashape.DataSource.OrthomosaicData,
-                image_format=Metashape.ImageFormatTIFF,
-                image_compression=compression,
-                white_background=True,
-                tile_width=config["orthomosaic"]["tile_width"],
-                tile_height=config["orthomosaic"]["tile_height"],
-                split_in_blocks=True,
-                save_world=config["orthomosaic"]["save_world"],
-                save_scheme=True,
-                raster_transform=Metashape.RasterTransformType.RasterTransformNone
-            )
-            logging.info(f"Orthomosaic exported successfully to: {ortho_path}")
-            return True
-        
-        except RuntimeError as e:
-            logging.error(f"Error during export: {str(e)}")
-            logging.warning("Trying alternative export settings...")
-        
-            # Try alternative export with different settings and even coarser resolution
-            try:
-                fallback_resolution = max(actual_resolution * 2, 0.01)  # Double resolution or 1cm minimum
-                logging.info(f"Trying fallback resolution: {fallback_resolution} m/pixel")
-                
-                chunk.exportRaster(
-                    path=ortho_path,
-                    resolution=fallback_resolution,
-                    source_data=Metashape.DataSource.OrthomosaicData,
-                    image_format=Metashape.ImageFormatTIFF,
-                    split_in_blocks=True,
-                    tile_width=config["orthomosaic"]["tile_width"],
-                    tile_height=config["orthomosaic"]["tile_height"],
-                    save_world=config["orthomosaic"]["save_world"],
-                    white_background=True
-                )
-                logging.info(f"Orthomosaic exported with fallback settings to: {ortho_path}")
-                return True
-            except Exception as e2:
-                logging.error(f"Alternative export also failed: {str(e2)}")
-                return False
-    
-    except Exception as e:
-        logging.error(f"Error building/exporting orthomosaic: {str(e)}")
-        return False
-
-def export_model(chunk, base_output_dir):
-    """
-    Export textured model with standardized naming.
-    
-    Args:
-        chunk (Metashape.Chunk): The chunk to process
-        base_output_dir (str): Base output directory
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    try:
-        # Get standardized export paths
-        model_id = clean_model_id(chunk.label)
-        paths = get_export_paths(model_id, base_output_dir)
-        model_path = paths['model']['file']
-        
-        # Export model
-        config = PARAMS['processing']['model_processing']
         chunk.exportModel(
             path=model_path,
             binary=False,
-            format=getattr(Metashape, f"ModelFormat{config['model_export']['format']}"),
-            texture_format=getattr(Metashape, f"ImageFormat{config['model_export']['texture_format']}"),
-            save_texture=config['model_export']["save_texture"],
-            save_uv=config['model_export']["save_uv"],
-            save_normals=config['model_export']["save_normals"],
-            save_colors=config['model_export']["save_colors"]
+            format=getattr(Metashape.ModelFormat, f"ModelFormat{model_export_config['format']}"),
+            texture_format=getattr(Metashape.ImageFormat, f"ImageFormat{model_export_config['texture_format']}"),
+            save_texture=model_export_config['save_texture'],
+            save_uv=model_export_config['save_uv'],
+            save_normals=model_export_config['save_normals'],
+            save_colors=model_export_config['save_colors']
         )
         
-        logging.info(f"Textured model exported to: {model_path}")
+        logging.info(f"High-poly model exported to: {model_path}")
         return True
-    
+        
     except Exception as e:
-        logging.error(f"Error exporting model: {str(e)}")
+        logging.error(f"Error exporting high-poly model: {str(e)}")
         return False
 
-def export_report(chunk, base_output_dir):
+def export_hipoly_report(chunk, model_id, base_output_dir):
     """
-    Export processing report with standardized naming.
+    Export high-poly processing report.
     
     Args:
-        chunk (Metashape.Chunk): The chunk to process
+        chunk (Metashape.Chunk): The chunk to export
+        model_id (str): Clean model ID
         base_output_dir (str): Base output directory
         
     Returns:
-        bool: True if successful, False otherwise
+        bool: True if successful
     """
     try:
-        # Get standardized export paths
-        model_id = clean_model_id(chunk.label)
         paths = get_export_paths(model_id, base_output_dir)
-        report_path = paths['report']['file']
+        report_dir = paths['report']['dir']
+        os.makedirs(report_dir, exist_ok=True)
         
-        chunk.exportReport(report_path, title=f"{model_id}")
-        logging.info(f"Report exported to: {report_path}")
+        report_path = os.path.join(report_dir, f"{model_id}_hipoly.pdf")
+        
+        chunk.exportReport(
+            path=report_path,
+            title=f"{model_id} - High Poly",
+            description=f"High-resolution model export for {model_id}",
+            page_numbers=True,
+            include_system_info=True
+        )
+        
+        logging.info(f"High-poly report exported to: {report_path}")
         return True
-    
+        
     except Exception as e:
-        logging.error(f"Error exporting report: {str(e)}")
+        logging.error(f"Error exporting high-poly report: {str(e)}")
         return False
 
+def create_lopoly_chunk(chunk, config):
+    """
+    Create low-poly version by duplicating, decimating, and retexturing.
+    
+    Args:
+        chunk (Metashape.Chunk): Original chunk
+        config (dict): Processing configuration
+        
+    Returns:
+        tuple: (lopoly_chunk, cameras_removed) or (None, 0) on failure
+    """
+    try:
+        logging.info("Duplicating chunk for low-poly processing...")
+        lopoly_chunk = chunk.copy(keypoints=False)
+        lopoly_chunk.label = f"{chunk.label}_lopoly"
+        
+        stats = lopoly_chunk.model.statistics()
+        current_faces = stats.faces
+        decimation_factor = config['decimation_factor']
+        target_faces = current_faces // decimation_factor
+        
+        logging.info(f"Decimating from {current_faces:,} to {target_faces:,} faces (factor: {decimation_factor})")
+        lopoly_chunk.decimateModel(
+            face_count=target_faces,
+            apply_to_selection=False,
+            replace_asset=True
+        )
+        
+        cameras_before = sum(1 for cam in lopoly_chunk.cameras if cam.enabled)
+        target_overlap = config['camera_overlap_reduction']['target_overlap']
+        
+        logging.info(f"Reducing camera overlap (target: {target_overlap} cameras per point)...")
+        lopoly_chunk.reduceOverlap(
+            overlap=target_overlap,
+            use_selection=False
+        )
+        
+        cameras_after = sum(1 for cam in lopoly_chunk.cameras if cam.enabled)
+        cameras_removed = cameras_before - cameras_after
+        logging.info(f"Camera overlap reduced: {cameras_before} → {cameras_after} ({cameras_removed} removed)")
+        
+        metashape_defaults = PARAMS['processing']['metashape']['defaults']
+        
+        logging.info("Rebuilding UV mapping...")
+        lopoly_chunk.buildUV(
+            mapping_mode=getattr(Metashape.MappingMode, metashape_defaults['mapping_mode']),
+            page_count=metashape_defaults['page_count'],
+            texture_size=metashape_defaults['texture_size']
+        )
+        
+        # Check if we should use GPU for texture generation
+        enable_texture_gpu = metashape_defaults.get("enable_texture_gpu", False)
+        
+        if not enable_texture_gpu:
+            # Save current GPU state
+            saved_gpu_mask = Metashape.app.gpu_mask
+            saved_cpu_enable = Metashape.app.cpu_enable
+            
+            # Temporarily disable GPU for texture building
+            Metashape.app.gpu_mask = 0
+            Metashape.app.cpu_enable = True
+            logging.info("GPU disabled for texture building (using CPU only)")
+        
+        logging.info("Rebuilding texture...")
+        lopoly_chunk.buildTexture(
+            blending_mode=getattr(Metashape.BlendingMode, metashape_defaults['blending_mode']),
+            texture_size=metashape_defaults['texture_size'],
+            fill_holes=metashape_defaults['fill_holes'],
+            ghosting_filter=metashape_defaults['ghosting_filter']
+        )
+        
+        if not enable_texture_gpu:
+            # Restore GPU state for subsequent operations
+            Metashape.app.gpu_mask = saved_gpu_mask
+            Metashape.app.cpu_enable = saved_cpu_enable
+            logging.info("GPU re-enabled after texture building")
+        
+        return lopoly_chunk, cameras_removed
+        
+    except Exception as e:
+        logging.error(f"Error creating low-poly chunk: {str(e)}")
+        return None, 0
+
+def export_lopoly_model(lopoly_chunk, model_id, base_output_dir, config):
+    """
+    Export low-poly model with texture.
+    
+    Args:
+        lopoly_chunk (Metashape.Chunk): The low-poly chunk to export
+        model_id (str): Clean model ID
+        base_output_dir (str): Base output directory
+        config (dict): Export configuration
+        
+    Returns:
+        bool: True if successful
+    """
+    try:
+        paths = get_export_paths(model_id, base_output_dir)
+        model_dir = paths['model']['dir']
+        os.makedirs(model_dir, exist_ok=True)
+        
+        model_path = os.path.join(model_dir, f"{model_id}_lopoly.obj")
+        
+        model_export_config = config['model_export']
+        
+        lopoly_chunk.exportModel(
+            path=model_path,
+            binary=False,
+            format=getattr(Metashape.ModelFormat, f"ModelFormat{model_export_config['format']}"),
+            texture_format=getattr(Metashape.ImageFormat, f"ImageFormat{model_export_config['texture_format']}"),
+            save_texture=model_export_config['save_texture'],
+            save_uv=model_export_config['save_uv'],
+            save_normals=model_export_config['save_normals'],
+            save_colors=model_export_config['save_colors']
+        )
+        
+        logging.info(f"Low-poly model exported to: {model_path}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error exporting low-poly model: {str(e)}")
+        return False
+
+def export_lopoly_report(lopoly_chunk, model_id, base_output_dir):
+    """
+    Export low-poly processing report.
+    
+    Args:
+        lopoly_chunk (Metashape.Chunk): The low-poly chunk
+        model_id (str): Clean model ID
+        base_output_dir (str): Base output directory
+        
+    Returns:
+        bool: True if successful
+    """
+    try:
+        paths = get_export_paths(model_id, base_output_dir)
+        report_dir = paths['report']['dir']
+        os.makedirs(report_dir, exist_ok=True)
+        
+        report_path = os.path.join(report_dir, f"{model_id}_lopoly.pdf")
+        
+        lopoly_chunk.exportReport(
+            path=report_path,
+            title=f"{model_id} - Low Poly",
+            description=f"Decimated model export for {model_id}",
+            page_numbers=True,
+            include_system_info=True
+        )
+        
+        logging.info(f"Low-poly report exported to: {report_path}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error exporting low-poly report: {str(e)}")
+        return False
+
+def build_and_export_orthomosaics(chunk, model_id, base_output_dir, config):
+    """
+    Build orthomosaic and export both full and tiled versions.
+    
+    Args:
+        chunk (Metashape.Chunk): The chunk to process
+        model_id (str): Clean model ID
+        base_output_dir (str): Base output directory
+        config (dict): Orthomosaic configuration
+        
+    Returns:
+        bool: True if successful
+    """
+    try:
+        ortho_config = config['orthomosaic']
+        
+        if not chunk.orthomosaic:
+            logging.info("Building orthomosaic...")
+            
+            enable_ortho_gpu = config.get("enable_orthomosaic_gpu", True)
+            
+            if enable_ortho_gpu:
+                # Ensure GPU is enabled for orthomosaic
+                # GPU should already be enabled from processing, but confirm
+                logging.info("Using GPU for orthomosaic generation")
+            else:
+                # Save current GPU state
+                saved_gpu_mask = Metashape.app.gpu_mask
+                saved_cpu_enable = Metashape.app.cpu_enable
+                
+                # Temporarily disable GPU for orthomosaic
+                Metashape.app.gpu_mask = 0
+                Metashape.app.cpu_enable = True
+                logging.info("GPU disabled for orthomosaic generation (using CPU only)")
+            
+            chunk.buildOrthomosaic(
+                surface_data=Metashape.DataSource.ModelData,
+                blending_mode=getattr(Metashape.BlendingMode, ortho_config['blending_mode']),
+                fill_holes=ortho_config['fill_holes']
+            )
+            
+            if not enable_ortho_gpu:
+                # Restore GPU state
+                Metashape.app.gpu_mask = saved_gpu_mask
+                Metashape.app.cpu_enable = saved_cpu_enable
+                logging.info("GPU re-enabled after orthomosaic generation")
+        
+        paths = get_export_paths(model_id, base_output_dir)
+        ortho_dir = paths['orthomosaic']['dir']
+        os.makedirs(ortho_dir, exist_ok=True)
+        
+        compression = Metashape.ImageCompression()
+        compression.tiff_tiled = True
+        compression.tiff_overviews = True
+        
+        compression_type = ortho_config.get("compression", "LZW")
+        if compression_type == "LZW":
+            compression.tiff_compression = Metashape.ImageCompression.TiffCompressionLZW
+        elif compression_type == "JPEG":
+            compression.tiff_compression = Metashape.ImageCompression.TiffCompressionJPEG
+        elif compression_type == "Packbits":
+            compression.tiff_compression = Metashape.ImageCompression.TiffCompressionPackbits
+        else:
+            compression.tiff_compression = Metashape.ImageCompression.TiffCompressionNone
+        
+        resolution = ortho_config['resolution']
+        
+        full_ortho_path = os.path.join(ortho_dir, f"{model_id}_full.tif")
+        logging.info(f"Exporting full orthomosaic (resolution: {resolution}m/px)...")
+        
+        chunk.exportRaster(
+            path=full_ortho_path,
+            source_data=Metashape.DataSource.OrthomosaicData,
+            image_format=Metashape.ImageFormatTIFF,
+            image_compression=compression,
+            resolution=resolution,
+            save_world=ortho_config.get('save_world', True),
+            save_alpha=ortho_config.get('save_alpha', True),
+            split_in_blocks=False,
+            white_background=True
+        )
+        logging.info(f"Full orthomosaic exported to: {full_ortho_path}")
+        
+        tile_size_meters = config.get('ortho_tile_size', 0.5)
+        tile_size_pixels = int(tile_size_meters / resolution)
+        
+        tiled_ortho_path = os.path.join(ortho_dir, f"{model_id}.tif")
+        logging.info(f"Exporting tiled orthomosaic ({tile_size_meters}m = {tile_size_pixels}px tiles)...")
+        
+        chunk.exportRaster(
+            path=tiled_ortho_path,
+            source_data=Metashape.DataSource.OrthomosaicData,
+            image_format=Metashape.ImageFormatTIFF,
+            image_compression=compression,
+            resolution=resolution,
+            save_world=ortho_config.get('save_world', True),
+            save_alpha=ortho_config.get('save_alpha', True),
+            split_in_blocks=True,
+            block_width=tile_size_pixels,
+            block_height=tile_size_pixels,
+            white_background=True
+        )
+        logging.info(f"Tiled orthomosaic exported to: {ortho_dir}/")
+        
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error building/exporting orthomosaics: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def process_chunk(chunk, doc, base_output_dir, config):
+    """
+    Process a single chunk for dual model export.
+    
+    Args:
+        chunk (Metashape.Chunk): The chunk to process
+        doc (Metashape.Document): The document containing the chunk
+        base_output_dir (str): Base output directory
+        config (dict): Processing configuration
+        
+    Returns:
+        bool: True if successful
+    """
+    model_id = clean_model_id(chunk.label)
+    start_time = time.time()
+    
+    status = get_transect_status(chunk.label)
+    scale_status = status.get("Scale", "")
+    
+    if scale_status != "PASS":
+        logging.info(f"Chunk {model_id} has Scale={scale_status}, skipping (need Scale=PASS)")
+        return False
+    
+    if scale_status == "DONE":
+        logging.info(f"Chunk {model_id} already processed (Scale=DONE), skipping...")
+        return True
+    
+    logging.info(f"\n{'='*60}")
+    logging.info(f"Processing chunk: {model_id}")
+    logging.info(f"{'='*60}")
+    
+    export_hipoly_model(chunk, model_id, base_output_dir, config)
+    export_hipoly_report(chunk, model_id, base_output_dir)
+    
+    lopoly_chunk, cameras_removed = create_lopoly_chunk(chunk, config)
+    
+    if lopoly_chunk:
+        export_lopoly_model(lopoly_chunk, model_id, base_output_dir, config)
+        export_lopoly_report(lopoly_chunk, model_id, base_output_dir)
+        logging.info("Low-poly chunk exported successfully")
+    else:
+        cameras_removed = 0
+        logging.warning("Failed to create low-poly chunk")
+    
+    build_and_export_orthomosaics(chunk, model_id, base_output_dir, config)
+    
+    output_psx_dir = os.path.join(base_output_dir, "output", "psx")
+    os.makedirs(output_psx_dir, exist_ok=True)
+    output_psx_path = os.path.join(output_psx_dir, f"{model_id}.psx")
+    
+    logging.info(f"Saving PSX with hipoly and lopoly chunks to: {output_psx_path}")
+    doc.save(output_psx_path)
+    
+    processing_time = time.time() - start_time
+    
+    update_tracking(chunk.label, {
+        "Scale": "DONE",
+        "Cameras Removed": str(cameras_removed),
+        "Step 3 complete": "True",
+        "Step 3 processing time": f"{processing_time:.2f}"
+    })
+    
+    logging.info(f"Completed processing for {model_id} in {processing_time:.2f}s")
+    return True
+
 def main():
-    """Main function to process models and create exports."""
-    # Open the existing document if running in Metashape GUI
-    if Metashape.app.document:
-        doc = Metashape.app.document
-    else:
-        doc = Metashape.Document()
-    
-    # Get the project directory
+    """Main function to process dual exports for all Scale=PASS models."""
     project_dir = DIRECTORIES["base"]
+    psxraw_dir = DIRECTORIES["psxraw"]
     
-    # Create output directories if they don't exist
-    report_dir = os.path.join(project_dir, DIRECTORIES["reports"])
-    orthomosaic_dir = os.path.join(project_dir, DIRECTORIES["orthomosaics"])
-    model_dir = os.path.join(project_dir, DIRECTORIES["models"])
+    if not os.path.exists(psxraw_dir):
+        logging.error(f"PSX raw directory not found: {psxraw_dir}")
+        return
     
-    os.makedirs(report_dir, exist_ok=True)
-    os.makedirs(orthomosaic_dir, exist_ok=True)
-    os.makedirs(model_dir, exist_ok=True)
-    
-    # Load configuration
-    config = PARAMS['processing']['model_processing']
-    has_coded_scales = config.get("has_coded_scales", False)
-    scale_bars = config.get("scale_bars", [])
-    
-    # Set up compression for orthomosaic export
-    compression = Metashape.ImageCompression()
-    compression.tiff_tiled = True
-    compression.tiff_overviews = True
-    
-    # Set compression type based on configuration
-    compression_type = config["orthomosaic"].get("compression", "LZW")
-    if compression_type == "LZW":
-        compression.tiff_compression = Metashape.ImageCompression.TiffCompressionLZW
-    elif compression_type == "JPEG":
-        compression.tiff_compression = Metashape.ImageCompression.TiffCompressionJPEG
-    elif compression_type == "Packbits":
-        compression.tiff_compression = Metashape.ImageCompression.TiffCompressionPackbits
-    else:
-        compression.tiff_compression = Metashape.ImageCompression.TiffCompressionNone
-    
-    # Get tracking files to determine which projects to process
     tracking_files = get_tracking_files()
     
     if not tracking_files:
         logging.error("No tracking files found. Run step1.py and step2.py first.")
         return
     
-    # Create or load tracking DataFrame
-    df = pd.DataFrame()
-    for tracking_file in tracking_files:
-        tracking_data = pd.read_csv(tracking_file)
-        df = pd.concat([df, tracking_data])
+    config = PARAMS['processing']['model_processing']
     
-    # Find site projects from step2
-    if "psx_finalname" in df.columns and "psx_finaldir" in df.columns:
-        site_projects = df[["psx_finalname", "psx_finaldir"]].drop_duplicates()
-        
-        # Process each site project
-        for _, row in site_projects.iterrows():
-            project_path = os.path.join(project_dir, row["psx_finaldir"], row["psx_finalname"])
-            
-            if not os.path.exists(project_path):
-                logging.warning(f"Project not found: {project_path}")
-                continue
-            
-            logging.info(f"Processing project: {project_path}")
-            
-            # Open the project
-            doc = Metashape.Document()
-            doc.open(project_path, read_only=False)
-            
-            # Process each chunk in the project
-            for chunk in doc.chunks:
-                # Check if already processed (skip if step 3 complete)
-                status = get_transect_status(chunk.label)
-                if status.get("Step 3 complete", "") == "True":
-                    logging.info(f"Chunk {chunk.label} already processed, skipping...")
-                    continue
-                    
-                logging.info(f"Processing chunk: {chunk.label}")
-                
-                # Add scale bars and apply scaling FIRST
-                scale_bars_applied = False
-                if has_coded_scales:
-                    scale_bars_applied = add_scale_bars(chunk, has_coded_scales, scale_bars)
-                
-                # Save project after scale bars to ensure scaling is applied
-                if scale_bars_applied:
-                    logging.info("Saving project to apply scale bar transformations...")
-                    doc.save()
-                
-                # Ground the model (move minimum Z to 0)
-                ground_model(chunk)
-                
-                # Remove small components
-                if config["model_cleanup"].get("remove_small_components", True):
-                    remove_small_components(chunk, config["model_cleanup"].get("min_faces", 100))
-                
-                # Export orthomosaic (now with proper scaling)
-                export_orthomosaic(chunk, project_dir, compression)
-                
-                # Export textured model
-                export_model(chunk, project_dir)
-                
-                # Export report
-                export_report(chunk, project_dir)
-                
-                # Update tracking
-                update_tracking(chunk.label, {
-                    "Status": "Step 3 complete",
-                    "Step 3 complete": "True",
-                    "Step 3 scale method": "Automatic",
-                    "Step 3 scale applied": str(has_coded_scales),
-                    "Step 3 model grounded": "True",
-                    "Step 3 ortho exported": "True",
-                    "Step 3 model exported": "True"
-                })
-            
-            # Save the project
-            doc.save()
-            logging.info(f"Saved project: {project_path}")
-    else:
-        # If DataFrame doesn't have the expected columns, look for projects directly
-        psx_finaldir = DIRECTORIES.get("psx_output", "05_outputs/psx")
-        psx_dir_path = os.path.join(project_dir, psx_finaldir)
-        
-        if os.path.exists(psx_dir_path):
-            project_files = [f for f in os.listdir(psx_dir_path) if f.endswith('.psx')]
-            
-            for project_file in project_files:
-                project_path = os.path.join(psx_dir_path, project_file)
-                logging.info(f"Processing project: {project_path}")
-                
-                # Open the project
-                doc = Metashape.Document()
-                doc.open(project_path, read_only=False)
-                
-                # Process each chunk in the project
-                for chunk in doc.chunks:
-                    # Check if already processed (skip if step 3 complete)
-                    status = get_transect_status(chunk.label)
-                    if status.get("Step 3 complete", "") == "True":
-                        logging.info(f"Chunk {chunk.label} already processed, skipping...")
-                        continue
-                        
-                    logging.info(f"Processing chunk: {chunk.label}")
-                    
-                    # Add scale bars and apply scaling FIRST
-                    scale_bars_applied = False
-                    if has_coded_scales:
-                        scale_bars_applied = add_scale_bars(chunk, has_coded_scales, scale_bars)
-                    
-                    # Save project after scale bars to ensure scaling is applied
-                    if scale_bars_applied:
-                        logging.info("Saving project to apply scale bar transformations...")
-                        doc.save()
-                    
-                    # Ground the model (move minimum Z to 0)
-                    ground_model(chunk)
-                    
-                    # Remove small components
-                    if config["model_cleanup"].get("remove_small_components", True):
-                        remove_small_components(chunk, config["model_cleanup"].get("min_faces", 100))
-                    
-                    # Export orthomosaic (now with proper scaling)
-                    export_orthomosaic(chunk, project_dir, compression)
-                    
-                    # Export textured model
-                    export_model(chunk, project_dir)
-                    
-                    # Export report
-                    export_report(chunk, project_dir)
-                    
-                    # Update tracking
-                    update_tracking(chunk.label, {
-                        "Status": "Step 3 complete",
-                        "Step 3 complete": "True",
-                        "Step 3 scale method": "Automatic",
-                        "Step 3 scale applied": str(has_coded_scales),
-                        "Step 3 model grounded": "True",
-                        "Step 3 ortho exported": "True",
-                        "Step 3 model exported": "True"
-                    })
-                
-                # Save the project
-                doc.save()
-                logging.info(f"Saved project: {project_path}")
-        else:
-            logging.error(f"PSX output directory not found: {psx_dir_path}")
+    psx_files = [f for f in os.listdir(psxraw_dir) if f.endswith('.psx')]
     
-    logging.info("All model processing and exports completed successfully.")
+    if not psx_files:
+        logging.error(f"No PSX files found in {psxraw_dir}")
+        return
+    
+    logging.info(f"Found {len(psx_files)} PSX files to process")
+    
+    processed_count = 0
+    skipped_count = 0
+    
+    for psx_file in psx_files:
+        psx_path = os.path.join(psxraw_dir, psx_file)
+        logging.info(f"\nProcessing PSX file: {psx_file}")
+        
+        doc = Metashape.Document()
+        doc.open(psx_path, read_only=False)
+        
+        for chunk in doc.chunks:
+            try:
+                if process_chunk(chunk, doc, project_dir, config):
+                    processed_count += 1
+                else:
+                    skipped_count += 1
+            except Exception as e:
+                logging.error(f"Error processing chunk {chunk.label}: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                skipped_count += 1
+        
+        doc.save()
+        logging.info(f"Saved {psx_file}")
+    
+    logging.info(f"\nStep 3 completed: {processed_count} chunks processed, {skipped_count} skipped")
 
 if __name__ == "__main__":
-    main() 
+    main()

@@ -219,11 +219,29 @@ PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /Applications/Metashap
 
 Groups models into batches, aligns cameras, builds depth maps, creates 3D models with textures, and saves to `processing/psxraw/`.
 
-### Manual Step: Straightening & Scaling Preparation
+### Manual Step: Quality Check & Alignment
 
-After Step 1, manually straighten each model in preparation for automatic scaling:
+After Step 1, manually check the quality of generated models:
 
 1. Open each PSX file in `processing/psxraw/` with Metashape
+2. For each model (chunk): review camera alignment, check point cloud quality, verify model IDs are correctly labeled
+3. Save the project
+
+### Step 2: Chunk Management
+
+Consolidates chunks by site to prepare for final processing.
+
+```bash
+PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py $PROJECT_DIR
+```
+
+Groups models by site and creates new PSX files organized by site in `output/psx/`.
+
+### Manual Step: Straightening & Scaling Preparation
+
+After Step 2, manually straighten each model and prepare for scaling:
+
+1. Open each project in the `output/psx/` directory
 2. For each chunk in the project:
 
    **Straightening (always required):**
@@ -238,101 +256,63 @@ After Step 1, manually straighten each model in preparation for automatic scalin
 
    **Scaling Preparation:**
 
-   - Ensure coded targets are visible and properly positioned in the model
-   - Verify at least 2 scale bars worth of targets are clearly visible
-
+   - **For automatic scaling (Step 3a):** Ensure coded targets are visible and properly positioned
+   - **For manual scaling (Step 3b):** Place markers on scale bars, set up at least 2 scale bars at different locations, set known distances in Reference pane, verify error < 0.01
 3. Save the project and quit Metashape
 
-### Step 2: Automatic Scaling and Validation
+### Step 3: Model Processing and Exports
 
-Automatically detects coded targets, applies scale bars, and validates scale accuracy.
+This step processes models with scaling, removes small components, and exports orthomosaics, textured models, and reports using standardized file naming.
+
+**Approach 1: Try Automatic Scaling First (Recommended, if coded targets present)**
 
 ```bash
+# Run automatic scaling first (detects coded targets)
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3.py $PROJECT_DIR
+```
+
+**If automatic scaling fails or no coded targets are present:**
+
+**Approach 2: Reset and Use Manual Scaling**
+
+```bash
+# Reset to preserve Step 0&1 work, clear Step 2+ outputs
+python src/utility/reset_step1.py $PROJECT_DIR
+
+# Re-run Step 2 (this is pretty quick)
 PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step2.py $PROJECT_DIR
+
+# Manually straighten and add scale bars in Metashape GUI (see Manual Step above)
+# Then run manual scale processing:
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3_manualScale.py $PROJECT_DIR
 ```
 
-**What it does:**
+**Alternative: Start with Manual Scaling**
+If you know there are no coded targets or prefer manual scaling from the start, skip `step3.py` and go directly to the manual workflow above.
 
-- Removes small disconnected components
-- Detects circular 20-bit coded targets
-- Removes markers not in scale_bars list (cleanup)
-- Adds scale bars from analysis_params.yaml
-- Applies scaling transformation
-- Calculates scale error and validates against threshold
-- Marks chunks as Scale=PASS or Scale=FAIL in status CSV
+**Both approaches produce identical outputs:**
 
-**Check results:** Review the status CSV `Scale` and `Scale Error (m)` columns to see which models passed validation.
-
-### Step 3: Dual Model Export (High-Poly and Low-Poly)
-
-Processes Scale=PASS models to generate production-ready outputs.
-
-```bash
-PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3.py $PROJECT_DIR
-```
-
-**What it does:**
-
-For each Scale=PASS chunk:
-- Exports high-poly model + texture + report
-- Creates low-poly version (decimated by factor from config)
-- Reduces camera overlap for efficiency
-- Retextures low-poly model
-- Exports low-poly model + texture + report
-- Generates full orthomosaic (single file)
-- Generates tiled orthomosaic (0.5m blocks)
-- Marks Scale=DONE when complete
-
-**Outputs:**
-
-- `output/models/{MODEL_ID}/{MODEL_ID}_hipoly.obj` + texture (.tif)
-- `output/models/{MODEL_ID}/{MODEL_ID}_lopoly.obj` + texture (.tif)
-- `output/orthomosaics/{MODEL_ID}/{MODEL_ID}_full.tif`
-- `output/orthomosaics/{MODEL_ID}/{MODEL_ID}_tile_*.tif` (multiple tiled files)
-- `output/reports/{MODEL_ID}_hipoly.pdf`
-- `output/reports/{MODEL_ID}_lopoly.pdf`
-- `output/psx/{MODEL_ID}.psx` (saved project with both hipoly and lopoly chunks)
-
-### Manual Scale Correction for FAIL Models
-
-If Step 2 marks a model as Scale=FAIL:
-
-1. Open the PSX file in `processing/psxraw/` with Metashape GUI
-2. Manually place or adjust scale bar markers
-3. In Metashape: Tools > Update Transform
-4. Verify error < 0.009m in Reference pane
-5. Save the project
-6. In status CSV, manually change `Scale` column from "FAIL" to "PASS"
-7. Re-run Step 3 to process the corrected model
+- Orthomosaics: `output/orthomosaics/{MODEL_ID}/{MODEL_ID}.tif`
+- Models: `output/models/{MODEL_ID}/{MODEL_ID}.obj`
+- Reports: `output/reports/{MODEL_ID}.pdf`
 
 ### Manual Step: Model Review and Touchups
 
-After Step 3, manually review the exported models:
+After Step 3, manually review and touch up the models:
 
-1. Review high-poly and low-poly models in external 3D viewer
-2. Check orthomosaic quality (full and tiled versions)
-3. Review processing reports for any issues
-4. If corrections needed, adjust in Metashape GUI and re-export
+1. Open each project in Metashape
+2. For each chunk: review orthomosaic and textured model quality, fill small holes if needed, adjust texture blending, verify scale bars and small component removal
+3. Save the project
 
-### Step 4: Web Publication (Future)
+### Step 4: Final Exports and Web Publishing
 
-**Under development**
+Creates final high-resolution outputs and uploads decimated models to Sketchfab for web viewing.
 
-Will process Scale=DONE models for Sketchfab upload:
+```bash
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step4.py $PROJECT_DIR
+```
 
-- Absolute triangle count threshold (not relative decimation)
-- Optimized for web viewing
-- Automatic upload with metadata
-
-### Step 5: Output Migration (Future)
-
-**Under development**
-
-Workflow for consolidating multiple project runs:
-
-- Migrate output/ contents to master collection folder
-- Append status CSV to master tracking database
-- Maintain processing provenance across runs
+Creates decimated models for web, uploads to Sketchfab (if configured), exports high-resolution assets to `output/final/`.
 
 ## Utility Scripts
 
@@ -379,25 +359,6 @@ python src/utility/reset_step1.py /path/to/project
 ```
 
 **When to use:** Re-running Step 2 (chunk management) and subsequent steps while preserving hours of Step 0 & Step 1 processing time.
-
-### `src/utility/migrate_csv_to_new_format.py`
-
-**Migrate Old CSV to New Format** - Adds new tracking columns to existing CSV files.
-
-**What it does:**
-
-- Adds 3 new columns: `Scale`, `Scale Error (m)`, `Cameras Removed`
-- Creates timestamped backup of original CSV
-- Preserves all existing data
-- Verifies migration succeeded
-
-**Usage:**
-
-```bash
-python src/utility/migrate_csv_to_new_format.py /path/to/old_status.csv
-```
-
-**When to use:** When applying the new streamlined workflow to projects that were processed with the old workflow version (pre-December 2025).
 
 ### `src/utility/enumerate_gpus.py`
 

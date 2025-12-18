@@ -3,23 +3,23 @@
 
 # Project Information
 project:
-  name: "base run " # This name will be overridden by the directory name
-  notes: "base run" 
+  name: "settings version 13 dec 2025 (based on panama 2025 run)" # Note: This name will be overridden by the directory name
+  notes: |
+     
 
-# Processing Parameters  
-
+# Processing Parameters
 processing:
   # Frame Extraction (step0.py)
-  frames_per_transect: 1000 # Number of frames to extract per model (1200)
-  # extraction_rate: 0.5    # 1.0 = all frames, 0.5 = every other frame
+  frames_per_transect: 1000  # Number of frames to extract per model (1200)
+  # extraction_rate: 0.5      # 1.0 = all frames, 0.5 = every other frame
                             # Rate for extracting frames if frames_per_transect is 0.
                             # Determines the interval: 1.0 = every frame, 0.5 = every 2nd frame, 0.25 = every 4th frame etc.
                             # Ignored if frames_per_transect > 0 (linspace used instead).
   
   # Initial 3D Processing (step1.py)
-  chunk_size: 1000  # Maximum number of frames per chunk (1200)
+  chunk_size: 1200  # Maximum number of frames per chunk (1200)
   use_gpu: true    # Whether to use GPU for processing
-  max_chunks_per_psx: 3    # Maximum number of chunks per PSX file for batch processing
+  max_chunks_per_psx: 4     # Maximum number of chunks per PSX file for batch processing
   metashape:
     defaults:
       # Point filtering thresholds
@@ -32,7 +32,7 @@ processing:
       tiepoint_limit: 4000            # Maximum number of tie points per image pair
       downscale: 1                    # Downscale factor for photos (1=highest quality, no downscaling)
       generic_preselection: false      # Use image content for pre-selecting image pairs
-      reference_preselection: false   # Use image metadata for pre-selecting image pairs  
+      reference_preselection: false    # Use image metadata for pre-selecting image pairs  
       filter_stationary_points: false # Filter stationary points that don't contribute to the geometry
       
       # Camera optimization
@@ -51,13 +51,13 @@ processing:
       vertex_colors: false              # Calculate vertex colors
       
       # Model smoothing
-      smooth_strength: 3               # Smoothing strength (1-10, higher=smoother)
+      smooth_strength: 1               # Smoothing strength (1-10, higher=smoother)
       fix_borders: true                # Fix model borders during smoothing
       preserve_edges: false            # Preserve sharp edges during smoothing
       
       # UV mapping
       mapping_mode: "GenericMapping"   # UV mapping mode: GenericMapping, OrthophotoMapping, AdaptiveOrthophotoMapping, SphericalMapping, CameraMapping
-      texture_size: 16384          # Texture size in pixels (power of 2) (16384 = 128^2 ; 4096 = 64^2 ; 4096 = 32^2 ; 2048 = 16^2 ; 1024 = 8^2 ; 512 = 4^2 ; 256 = 2^2 ; 128 = 1^2) (16384)
+      texture_size: 16384              # Texture size in pixels (power of 2) (16384 = 128^2 ; 4096 = 64^2 ; 4096 = 32^2 ; 2048 = 16^2 ; 1024 = 8^2 ; 512 = 4^2 ; 256 = 2^2 ; 128 = 1^2) 
       page_count: 1                    # Number of texture pages (4)
       
       # Texture building
@@ -65,64 +65,50 @@ processing:
       blending_mode: "MosaicBlending"  # Blending mode: AverageBlending, MosaicBlending, MaxBlending, MinBlending, DisabledBlending
       fill_holes: true                 # Fill texture holes
       ghosting_filter: true            # Filter ghosting artifacts
-      enable_texture_gpu: false        # Use GPU for texture generation (separate from main GPU setting)
-
-  # DEPRECATED - Chunk mgmt step 2 (useless) 
-  chunk_management:
-   psx_startdir: "examples/"         # Starting directory for PSX files
-   psx_finaldir: "examples/"        # Final directory for PSX files
-   chunk_quality:
-   min_cameras: 0                 # Minimum number of aligned cameras for a quality chunk
-   min_alignment_percentage: 0    # Minimum percentage of aligned cameras for a quality chunk
+      enable_gpu: false                # Use GPU for texture generation
+      relaxed_precision: true          # Use relaxed precision for texture generation
   
-  # Model Processing (step2.py and step3.py)
+  ######## STOP HERE #########
+  # Chunk Management (step2.py)
+  chunk_management:
+    psx_startdir: "examples/2024_BPT_BIT_GKT_CSE_PBL_forGillian_2july2025/output"         # Starting directory for PSX files
+    psx_finaldir: "examples/2024_BPT_BIT_GKT_CSE_PBL_forGillian_2july2025/output"        # Final directory for PSX files
+    chunk_quality:
+      min_cameras: 0                 # Minimum number of aligned cameras for a quality chunk
+      min_alignment_percentage: 0    # Minimum percentage of aligned cameras for a quality chunk
+  
+  # Exports and Scale Bars (step3.py)
   model_processing:
     has_coded_scales: true           # Whether the model has coded scale markers
-    scale_bars:                       # Scale bar definitions for automatic scaling
+    scale_bars:                       # Scale bar definitions if using coded markers
       - start_marker: "target 1000"   # First marker label
         end_marker: "target 1010"     # Second marker label
-        distance: 0.75                # Distance between markers in meters
+        distance: 0.75               # Distance between markers in meters
       - start_marker: "target 1020"
         end_marker: "target 1030"
         distance: 0.75
-    
-    scale_error_threshold: 0.05       # Maximum acceptable scale error in meters
-                                      # GENEROUS (50mm) for initial testing
-                                      # Conservative: 0.005m (5mm)
-                                      # Typical: 0.009m (9mm) - recommended after testing
-                                      # Relaxed: 0.01m (10mm)
-    
-    remove_unlisted_markers: true     # Remove all markers except those in scale_bars list
-                                      # Prevents clutter from extra detected targets
-    
-    enable_orthomosaic_gpu: true      # Use GPU for orthomosaic generation  
-    
-    decimation_factor: 10             # Divide mesh face count by this value for low-poly model
-                                      # 10 = reduce to 10% (e.g., 2,000,000 faces → 200,000 faces)
-    
-    camera_overlap_reduction:
-      target_overlap: 3               # Target number of cameras observing each surface point
-                                      # 3 = conservative (recommended first run)
-                                      # 2 = more aggressive removal
-    
-    ortho_tile_size: 0.5              # Tile size in meters (0.5m x 0.5m blocks)
-                                      # Converted to pixels based on resolution
-    
+    model_cleanup:
+      min_faces: 0                 # Minimum faces for a component to be kept (100)
+      min_vertices: 0               # Minimum vertices for a component to be kept
+      remove_small_components: false  # Whether to remove small disconnected components (true)
     orthomosaic:
-      resolution: 0.001               # Resolution in meters/pixel (1mm)
+      resolution: 0.001              # Resolution in meters/pixel (1mm)
       blending_mode: "MosaicBlending" # Blending mode for orthomosaic
-      fill_holes: true                # Fill holes in orthomosaic
-      save_alpha: true                # Save alpha channel
-      save_world: true                # Save world file
-      compression: "LZW"              # Compression type: None, LZW, JPEG, Packbits
-    
+      fill_holes: true               # Fill holes in orthomosaic
+      save_alpha: true               # Save alpha channel
+      save_world: true               # Save world file
+      save_xyz: true                 # Save XYZ coordinate file
+      tile_width: 2048               # Tile width for tiled export
+      tile_height: 2048              # Tile height for tiled export
+      compression: "LZW"             # Compression type: None, LZW, JPEG, Packbits
     model_export:
-      format: "OBJ"                   # Model format: OBJ, 3DS, FBX, etc.
-      texture_format: "TIFF"          # Texture format: TIFF (high quality), JPEG, PNG
-      save_texture: true              # Save textures with model
-      save_uv: true                   # Save UV coordinates
-      save_normals: true              # Save normal vectors
-      save_colors: true               # Save vertex colors
+      format: "OBJ"                  # Model format: OBJ, 3DS, FBX, etc.
+      texture_format: "JPEG"         # Texture format: JPEG, PNG, TIFF
+      texture_size: 4096             # Texture size for export
+      save_texture: true             # Save textures with model
+      save_uv: true                  # Save UV coordinates
+      save_normals: true             # Save normal vectors
+      save_colors: true              # Save vertex colors
   
   # Final Exports and Web Publishing (step4.py)
   final_exports:

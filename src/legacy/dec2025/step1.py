@@ -271,34 +271,14 @@ def process_transect(transect_id, chunk, doc, psx_path):
         
         # Build texture
         logging.info(f"Building texture for model {transect_id}")
-        
-        # Check if we should use GPU for texture generation
-        enable_texture_gpu = METASHAPE_DEFAULTS.get("enable_texture_gpu", False)
-        
-        if not enable_texture_gpu:
-            # Save current GPU state
-            saved_gpu_mask = Metashape.app.gpu_mask
-            saved_cpu_enable = Metashape.app.cpu_enable
-            
-            # Temporarily disable GPU for texture building
-            Metashape.app.gpu_mask = 0
-            Metashape.app.cpu_enable = True
-            logging.info("GPU disabled for texture building (using CPU only)")
-        
-        # Build texture without gpu_mask parameter
         chunk.buildTexture(
             texture_size=METASHAPE_DEFAULTS["texture_size"],
             texture_type=getattr(Metashape.Model, METASHAPE_DEFAULTS["texture_type"]),
             blending_mode=getattr(Metashape, METASHAPE_DEFAULTS["blending_mode"]),
+            enable_gpu=True,  # Force GPU usage for texture generation
             ghosting_filter=METASHAPE_DEFAULTS.get("ghosting_filter", True),
             fill_holes=METASHAPE_DEFAULTS.get("fill_holes", True)
         )
-        
-        if not enable_texture_gpu:
-            # Restore GPU state for subsequent operations
-            Metashape.app.gpu_mask = saved_gpu_mask
-            Metashape.app.cpu_enable = saved_cpu_enable
-            logging.info("GPU re-enabled after texture building")
         
         # Verify texture exists
         if chunk.model and chunk.model.textures:
