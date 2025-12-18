@@ -46,16 +46,16 @@ The processing step comes second, but is listed first since is the primary purpo
 │   ├── config.py                # Configuration loading utilities
 │   ├── step0.py                 # Frame extraction
 │   ├── step1.py                 # Initial 3D processing (most time-consuming)
-│   ├── step2.py                 # Chunk management/consolidation
-│   ├── step3.py                 # Model processing (automatic scaling)
-│   ├── step3_manualScale.py     # Model processing (manual scaling)
+│   ├── step2.py                 # Automatic scaling and validation
+│   ├── step3.py                 # Dual model export (high-poly and low-poly)
 │   ├── step4.py                 # Final exports & web publishing
 │   ├── legacy/                  # Legacy/archived scripts
 │   └── utility/                 # Utility scripts
 │       ├── enumerate_gpus.py    # GPU detection for Metashape
+│       ├── file_naming.py       # Standardized file naming functions
+│       ├── migrate_csv_to_new_format.py  # CSV format migration utility
 │       ├── reset_full.py        # Complete project reset
-│       ├── reset_step1.py       # Reset preserving Steps 0&1
-│       └── file_naming.py       # Standardized file naming functions
+│       └── reset_step1.py       # Reset preserving Steps 0&1
 ├── README.md                     # This documentation
 └── requirements.txt              # Python package dependencies
 ```
@@ -95,21 +95,23 @@ This will create the following directory structure:
 ├── video_source/                    # Input video files
 ├── processing/                      # Intermediate processing data
 │   ├── frames/                      # Extracted frames organized by model (Step 0)
-│   └── psxraw/                      # Initial PSX files (Step 1)
+│   ├── psxraw/                      # Initial PSX files (Step 1)
+│   └── reportsraw/                  # Initial reports (Step 1)
 └── output/                          # All final outputs
-    ├── psx/                         # Consolidated PSX files by site (Step 2)
+    ├── psx/                         # Scaled PSX files (Step 2) and lo/hi poly PSX (Step 3)
     ├── orthomosaics/                # Orthomosaic outputs (Step 3)
     │   └── {MODEL_ID}/              # Each model in its own subdirectory
-    │       └── {MODEL_ID}.tif       # Clean model ID filename
+    │       ├── {MODEL_ID}_full.tif  # Full orthomosaic
+    │       └── {MODEL_ID}_tile_*.tif # Tiled orthomosaics
     ├── models/                      # 3D model outputs (Step 3)
     │   └── {MODEL_ID}/              # Each model in its own subdirectory
-    │       ├── {MODEL_ID}.obj       # Clean model ID filename
-    │       └── [texture files]      # Associated texture files
+    │       ├── {MODEL_ID}_hipoly.obj + texture    # High-poly model
+    │       └── {MODEL_ID}_lopoly.obj + texture    # Low-poly model
     ├── reports/                     # Processing reports (Step 3)
-    │   ├── {MODEL_ID}.pdf           # Clean model ID filename (flat structure)
-    │   └── {MODEL_ID}.pdf           # All reports in same directory
+    │   ├── {MODEL_ID}_hipoly.pdf    # High-poly processing report
+    │   └── {MODEL_ID}_lopoly.pdf    # Low-poly processing report
     ├── logs/                        # Processing logs
-    └── final/                       # Final high-resolution outputs (Step 4)
+    └── final/                       # (DEPRECATED) Final high-resolution outputs (Step 4)
 ```
 
 **Important:** Once this directory structure is created, do not rename or move the standard subdirectories (`video_source`, `processing`, `output`). The scripts rely on this specific structure. The only manual change expected within `{PROJECT_DIR}` after setup is adding your video files to the `{PROJECT_DIR}/video_source/` directory.
@@ -144,6 +146,129 @@ source $PROJECT_DIR/.venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## GPU Configuration
+
+The pipeline provides fine-grained control over GPU usage for different processing stages through `analysis_params.yaml`:
+
+### Main GPU Setting
+
+```yaml
+processing:
+  use_gpu: true    # Enable GPU for photo alignment, depth maps, and mesh building
+```
+
+Controls GPU usage for:
+- Photo matching and camera alignment
+- Depth map generation
+- 3D mesh building
+- All primary photogrammetry operations
+
+### Texture-Specific GPU Setting
+
+```yaml
+metashape:
+  defaults:
+    enable_texture_gpu: false    # Use CPU for texture generation
+```
+
+Controls GPU usage specifically for texture building. Set to `false` to avoid potential GPU memory issues during texture generation while still using GPU for other operations.
+
+### Orthomosaic GPU Setting
+
+```yaml
+model_processing:
+  enable_orthomosaic_gpu: true    # Use GPU for orthomosaic generation
+```
+
+Controls GPU usage for orthomosaic generation in Step 3.
+
+**Recommended Settings:**
+- High-end GPU (24GB+ VRAM): Set all to `true`
+- Mid-range GPU (8-16GB VRAM): `use_gpu: true`, `enable_texture_gpu: false`, `enable_orthomosaic_gpu: true`
+- Low-end GPU or CPU-only: Set all to `false`
+
+**Note:** GPU control is managed through `Metashape.app.gpu_mask` and `Metashape.app.cpu_enable` global settings. The pipeline automatically saves and restores GPU state when temporarily disabling GPU for specific operations.
+
+## Quick Start Guide
+
+For experienced users who want a copy-paste command sequence. This assumes you've already cloned the repository.
+
+### Complete Pipeline Run
+
+```bash
+# Set your project directory (change path as needed)
+export PROJECT_DIR=examples/your_project_name/
+
+# Create directory structure and setup
+mkdir -p $PROJECT_DIR/{video_source,processing,output}
+cp analysis_params.yaml $PROJECT_DIR/
+
+# Setup Python environment
+python3.9 -m venv $PROJECT_DIR/.venv
+source $PROJECT_DIR/.venv/bin/activate
+pip install -r requirements.txt
+
+# MANUAL: Add your video files to $PROJECT_DIR/video_source/
+# MANUAL: Edit $PROJECT_DIR/analysis_params.yaml with your settings
+
+# Step 0: Extract frames (non-Metashape)
+python src/step0.py $PROJECT_DIR
+
+# Step 1: Initial 3D processing 
+# PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /path/to/metashape-pro/metashape -r src/step1.py $PROJECT_DIR
+
+PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /home/bizon/applications/metashape-pro_2_2_2_amd64/metashape-pro/metashape -r src/step1.py $PROJECT_DIR
+
+# MANUAL: Open PSX files in processing/psxraw/ with Metashape GUI
+# MANUAL: For each chunk: straighten model, rotate region to view, crop region to model
+
+# Step 2: Automatic scaling and validation
+#  PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages   /path/to/metashape-pro/metashape -r src/step2.py $PROJECT_DIR
+
+PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /home/bizon/applications/metashape-pro_2_2_2_amd64/metashape-pro/metashape -r src/step2.py $PROJECT_DIR
+
+# MANUAL: Review status CSV - check Scale column for PASS/FAIL status
+# MANUAL: For FAIL models, manually adjust scale bars in Metashape GUI, update CSV to PASS
+
+# Step 3: Dual model export (high-poly, low-poly, orthomosaics)
+# PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages   /path/to/metashape-pro/metashape -r src/step3.py $PROJECT_DIR
+
+PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /home/bizon/applications/metashape-pro_2_2_2_amd64/metashape-pro/metashape -r src/step3.py $PROJECT_DIR
+
+# MANUAL: Review exported models and orthomosaics in output/ directory
+
+# Step 4: Final exports and web publishing (future)
+# Not yet implemented
+```
+
+### Platform-Specific Metashape Paths
+
+**macOS:**
+```bash
+/Applications/MetashapePro.app/Contents/MacOS/MetashapePro
+```
+
+**Linux:**
+```bash
+/home/user/applications/metashape-pro_2_2_2_amd64/metashape-pro/metashape
+```
+
+### Utility Commands
+
+```bash
+# Reset entire project (back to before Step 0)
+python src/utility/reset_full.py $PROJECT_DIR
+
+# Reset after Step 1 (preserves extracted frames and initial PSX files)
+python src/utility/reset_step1.py $PROJECT_DIR
+
+# Migrate old CSV to new format (if updating from pre-Dec 2025 workflow)
+python src/utility/migrate_csv_to_new_format.py $PROJECT_DIR/status_*.csv
+
+# Check available GPUs
+PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages  /path/to/metashape-pro/metashape -r src/utility/enumerate_gpus.py
+```
+
 ## Standardized File Naming
 
 We use a clean, standardized naming system for all outputs:
@@ -152,8 +277,8 @@ We use a clean, standardized naming system for all outputs:
 - **No Suffixes:** Files are named simply as `{MODEL_ID}.ext`
 - **Organized Structure:**
   - Orthomosaics and models get their own subdirectories: `output/orthomosaics/{MODEL_ID}/` and `output/models/{MODEL_ID}/`
-  - Reports are flat in `output/reports/{MODEL_ID}.pdf`
-- **Consistent Across Scripts:** Both `step3.py` and `step3_manualScale.py` produce identical file names and structure
+  - Reports are flat in `output/reports/{MODEL_ID}_hipoly.pdf` and `{MODEL_ID}_lopoly.pdf`
+- **Dual Export:** Step 3 produces both high-poly and low-poly models with textures and reports
 
 **Example Output:**
 
@@ -161,13 +286,17 @@ We use a clean, standardized naming system for all outputs:
 output/
 ├── orthomosaics/
 │   └── TCRMP20241014_3D_BWR_T2/
-│       └── TCRMP20241014_3D_BWR_T2.tif
+│       ├── TCRMP20241014_3D_BWR_T2_full.tif
+│       └── TCRMP20241014_3D_BWR_T2_tile_*.tif
 ├── models/
 │   └── TCRMP20241014_3D_BWR_T2/
-│       ├── TCRMP20241014_3D_BWR_T2.obj
-│       └── TCRMP20241014_3D_BWR_T2.jpg  # texture file
+│       ├── TCRMP20241014_3D_BWR_T2_hipoly.obj
+│       ├── TCRMP20241014_3D_BWR_T2_hipoly.tif  # texture
+│       ├── TCRMP20241014_3D_BWR_T2_lopoly.obj
+│       └── TCRMP20241014_3D_BWR_T2_lopoly.tif  # texture
 └── reports/
-    └── TCRMP20241014_3D_BWR_T2.pdf
+    ├── TCRMP20241014_3D_BWR_T2_hipoly.pdf
+    └── TCRMP20241014_3D_BWR_T2_lopoly.pdf
 ```
 
 ## Workflow Overview
@@ -176,11 +305,11 @@ The complete processing workflow consists of the following steps:
 
 1. **Frame Extraction** (step0.py): Extract frames from video footage
 2. **Initial 3D Processing** (step1.py): Process extracted frames to create initial 3D models
-3. **Manual Quality Check & Alignment**: Check and align models (manual step)
-4. **Chunk Management** (step2.py): Organize chunks by site
-5. **Manual Straightening & Scaling**: Straighten and scale models (manual step)
-6. **Model Processing and Exports** (step3.py): Add scale bars, remove small components, export assets
-7. **Manual Touchups**: Review and touch up models (manual step)
+3. **Manual Quality Check**: Review model quality (manual step)
+4. **Manual Straightening**: Straighten and crop models in Metashape (manual step)
+5. **Automatic Scaling** (step2.py): Detect targets, add scale bars, validate accuracy
+6. **Dual Model Export** (step3.py): Export high-poly and low-poly models with orthomosaics
+7. **Manual Review**: Check exported models and orthomosaics (manual step)
 8. **Final Exports & Web Publishing** (step4.py): Create final exports and upload to Sketchfab
 
 **Note:** Each script will prompt for the project directory containing the `analysis_params.yaml` file if not provided as a command-line argument. This allows processing different projects without code modifications, as source files will be linked to individual project directories dynamically for each run.
@@ -265,7 +394,7 @@ PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /Applications/Metashap
 
 ### Step 3: Dual Model Export (High-Poly and Low-Poly)
 
-Processes Scale=PASS models to generate production-ready outputs.
+Processes Scale=PASS models to generate production-ready outputs with both high-resolution and optimized low-poly versions.
 
 ```bash
 PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /Applications/MetashapePro.app/Contents/MacOS/MetashapePro -r src/step3.py $PROJECT_DIR
@@ -274,17 +403,24 @@ PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages /Applications/Metashap
 **What it does:**
 
 For each Scale=PASS chunk:
-- Exports high-poly model + texture + report
-- Creates low-poly version (decimated by factor from config)
-- Reduces camera overlap for efficiency
-- Retextures low-poly model
-- Exports low-poly model + texture + report
-- Generates full orthomosaic (single file)
-- Generates tiled orthomosaic (0.5m blocks)
-- Marks Scale=DONE when complete
+1. **High-Poly Export:**
+   - Exports full-resolution model with texture
+   - Generates processing report
+2. **Low-Poly Creation:**
+   - Duplicates chunk
+   - Decimates mesh by configured factor (default: 10x reduction)
+   - Reduces camera overlap for efficiency (target: 3 cameras per point)
+   - Rebuilds UV mapping
+   - Regenerates texture (using CPU if configured)
+   - Exports low-poly model with texture and report
+3. **Orthomosaic Generation:**
+   - Builds full orthomosaic (single TIFF)
+   - Generates tiled orthomosaic (0.5m blocks)
+4. **Final Save:**
+   - Saves PSX with both hipoly and lopoly chunks
+   - Marks as Scale=DONE in status CSV
 
 **Outputs:**
-
 - `output/models/{MODEL_ID}/{MODEL_ID}_hipoly.obj` + texture (.tif)
 - `output/models/{MODEL_ID}/{MODEL_ID}_lopoly.obj` + texture (.tif)
 - `output/orthomosaics/{MODEL_ID}/{MODEL_ID}_full.tif`
@@ -293,17 +429,7 @@ For each Scale=PASS chunk:
 - `output/reports/{MODEL_ID}_lopoly.pdf`
 - `output/psx/{MODEL_ID}.psx` (saved project with both hipoly and lopoly chunks)
 
-### Manual Scale Correction for FAIL Models
-
-If Step 2 marks a model as Scale=FAIL:
-
-1. Open the PSX file in `processing/psxraw/` with Metashape GUI
-2. Manually place or adjust scale bar markers
-3. In Metashape: Tools > Update Transform
-4. Verify error < 0.009m in Reference pane
-5. Save the project
-6. In status CSV, manually change `Scale` column from "FAIL" to "PASS"
-7. Re-run Step 3 to process the corrected model
+**GPU Usage:** Controlled by `enable_texture_gpu` and `enable_orthomosaic_gpu` settings in analysis_params.yaml.
 
 ### Manual Step: Model Review and Touchups
 
