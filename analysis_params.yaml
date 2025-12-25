@@ -3,7 +3,7 @@
 
 # Project Information
 project:
-  name: "base run " # This name will be overridden by the directory name
+  name: "base run" # This name will be overridden by the directory name
   notes: "base run" 
 
 # Processing Parameters  
@@ -19,7 +19,7 @@ processing:
   # Initial 3D Processing (step1.py)
   chunk_size: 1000  # Maximum number of frames per chunk (1200)
   use_gpu: true    # Whether to use GPU for processing
-  max_chunks_per_psx: 3    # Maximum number of chunks per PSX file for batch processing
+  max_chunks_per_psx: 4    # Maximum number of chunks per PSX file for batch processing
   metashape:
     defaults:
       # Point filtering thresholds
@@ -51,7 +51,7 @@ processing:
       vertex_colors: false              # Calculate vertex colors
       
       # Model smoothing
-      smooth_strength: 3               # Smoothing strength (1-10, higher=smoother)
+      smooth_strength: 1               # Smoothing strength (1-10, higher=smoother)
       fix_borders: true                # Fix model borders during smoothing
       preserve_edges: false            # Preserve sharp edges during smoothing
       
@@ -105,17 +105,26 @@ processing:
                                       # 3 = conservative (recommended first run)
                                       # 2 = more aggressive removal
     
-    ortho_tile_size: 0.5              # Tile size in meters (0.5m x 0.5m blocks)
+    ortho_tile_size: 1              # Tile size in meters (0.5m x 0.5m blocks)
                                       # Converted to pixels based on resolution
-    
     orthomosaic:
-      resolution: 0.001               # Resolution in meters/pixel (1mm)
+      resolution: 0                   # Resolution in meters/pixel (0 = native/auto from source images) Set to specific value like 0.001 for 1mm if you want fixed resolution
       blending_mode: "MosaicBlending" # Blending mode for orthomosaic
       fill_holes: true                # Fill holes in orthomosaic
+      ghosting_filter: false          # Enable ghosting filter (API default: false)
+      cull_faces: false               # Enable back-face culling (API default: false)
+      refine_seamlines: false         # Refine seamlines based on image content (API default: false)
+      subdivide_task: true            # Enable fine-level task subdivision (API default: true)
+      workitem_size_cameras: 1000     # Number of cameras per workitem (API default: 20)
+                                      # Higher = process more cameras at once (set to your camera count)
+      workitem_size_tiles: 10         # Number of tiles per workitem (API default: 10)
+      max_workgroup_size: 100         # Maximum workgroup size (API default: 100)
       save_alpha: true                # Save alpha channel
       save_world: true                # Save world file
       compression: "LZW"              # Compression type: None, LZW, JPEG, Packbits
-    
+      export_resolution: 0.0005       # resolution of export 
+      ortho_tile_size: 1              # size of ortho tiles (in m) 
+ 
     model_export:
       format: "OBJ"                   # Model format: OBJ, 3DS, FBX, etc.
       texture_format: "TIFF"          # Texture format: TIFF (high quality), JPEG, PNG
@@ -153,3 +162,4 @@ processing:
   
   # File Naming
   psx_filename: "TCRMP{date}_3D_{site}"  # Template for final PSX files in output/psx/ 
+  

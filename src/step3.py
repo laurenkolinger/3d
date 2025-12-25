@@ -123,8 +123,12 @@ def create_lopoly_chunk(chunk, config):
         tuple: (lopoly_chunk, cameras_removed) or (None, 0) on failure
     """
     try:
-        logging.info("Duplicating chunk for low-poly processing...")
-        lopoly_chunk = chunk.copy(keypoints=False)
+        logging.info("Duplicating chunk for low-poly processing (model only, no texture)...")
+        # Copy only the model data, not texture (texture will be rebuilt after decimation)
+        lopoly_chunk = chunk.copy(
+            items=[Metashape.DataSource.ModelData],
+            keypoints=False
+        )
         lopoly_chunk.label = f"{chunk.label}_lopoly"
         
         stats = lopoly_chunk.model.statistics()
@@ -289,31 +293,45 @@ def build_and_export_orthomosaics(chunk, model_id, base_output_dir, config):
             
             enable_ortho_gpu = config.get("enable_orthomosaic_gpu", True)
             
+            # Save current GPU state before any changes
+            saved_gpu_mask = Metashape.app.gpu_mask
+            saved_cpu_enable = Metashape.app.cpu_enable
+            
             if enable_ortho_gpu:
-                # Ensure GPU is enabled for orthomosaic
-                # GPU should already be enabled from processing, but confirm
-                logging.info("Using GPU for orthomosaic generation")
+                # Actually enable GPU for orthomosaic
+                gpu_devices = Metashape.app.enumGPUDevices()
+                if gpu_devices:
+                    Metashape.app.gpu_mask = (1 << len(gpu_devices)) - 1
+                    Metashape.app.cpu_enable = False
+                    logging.info(f"GPU enabled for orthomosaic: mask={Metashape.app.gpu_mask}, {len(gpu_devices)} device(s)")
+                else:
+                    logging.warning("No GPU devices found, using CPU for orthomosaic")
+                    Metashape.app.cpu_enable = True
             else:
-                # Save current GPU state
-                saved_gpu_mask = Metashape.app.gpu_mask
-                saved_cpu_enable = Metashape.app.cpu_enable
-                
-                # Temporarily disable GPU for orthomosaic
+                # Disable GPU for orthomosaic
                 Metashape.app.gpu_mask = 0
                 Metashape.app.cpu_enable = True
                 logging.info("GPU disabled for orthomosaic generation (using CPU only)")
             
+            # Build orthomosaic with all parameters from config
             chunk.buildOrthomosaic(
                 surface_data=Metashape.DataSource.ModelData,
                 blending_mode=getattr(Metashape.BlendingMode, ortho_config['blending_mode']),
-                fill_holes=ortho_config['fill_holes']
+                fill_holes=ortho_config.get('fill_holes', True),
+                resolution=ortho_config.get('resolution', 0),  # 0 = native resolution
+                ghosting_filter=ortho_config.get('ghosting_filter', False),
+                cull_faces=ortho_config.get('cull_faces', False),
+                refine_seamlines=ortho_config.get('refine_seamlines', False),
+                subdivide_task=ortho_config.get('subdivide_task', True),
+                workitem_size_cameras=ortho_config.get('workitem_size_cameras', 20),
+                workitem_size_tiles=ortho_config.get('workitem_size_tiles', 10),
+                max_workgroup_size=ortho_config.get('max_workgroup_size', 100)
             )
             
-            if not enable_ortho_gpu:
-                # Restore GPU state
-                Metashape.app.gpu_mask = saved_gpu_mask
-                Metashape.app.cpu_enable = saved_cpu_enable
-                logging.info("GPU re-enabled after orthomosaic generation")
+            # Restore GPU state after orthomosaic generation
+            Metashape.app.gpu_mask = saved_gpu_mask
+            Metashape.app.cpu_enable = saved_cpu_enable
+            logging.info("GPU state restored after orthomosaic generation")
         
         paths = get_export_paths(model_id, base_output_dir)
         ortho_dir = paths['orthomosaic']['dir']
@@ -333,17 +351,24 @@ def build_and_export_orthomosaics(chunk, model_id, base_output_dir, config):
         else:
             compression.tiff_compression = Metashape.ImageCompression.TiffCompressionNone
         
-        resolution = ortho_config['resolution']
+        # Use resolution from config (0 = native resolution)
+        resolution = ortho_config.get('export_resolution', 0)
+        
+        # Get actual resolution from built orthomosaic for tile calculation
+        # When resolution=0 was used in buildOrthomosaic, we need the actual value
+        actual_resolution = chunk.orthomosaic.resolution if chunk.orthomosaic else 0.001
+        resolution_display = "native" if resolution == 0 else f"{resolution}m/px"
+        logging.info(f"Orthomosaic actual resolution: {actual_resolution}m/px")
         
         full_ortho_path = os.path.join(ortho_dir, f"{model_id}_full.tif")
-        logging.info(f"Exporting full orthomosaic (resolution: {resolution}m/px)...")
+        logging.info(f"Exporting full orthomosaic (resolution: {resolution_display})...")
         
         chunk.exportRaster(
             path=full_ortho_path,
             source_data=Metashape.DataSource.OrthomosaicData,
             image_format=Metashape.ImageFormatTIFF,
             image_compression=compression,
-            resolution=resolution,
+            resolution=resolution,  # 0 = native resolution
             save_world=ortho_config.get('save_world', True),
             save_alpha=ortho_config.get('save_alpha', True),
             split_in_blocks=False,
@@ -351,8 +376,9 @@ def build_and_export_orthomosaics(chunk, model_id, base_output_dir, config):
         )
         logging.info(f"Full orthomosaic exported to: {full_ortho_path}")
         
+        # Calculate tile size in pixels using actual orthomosaic resolution
         tile_size_meters = config.get('ortho_tile_size', 0.5)
-        tile_size_pixels = int(tile_size_meters / resolution)
+        tile_size_pixels = int(tile_size_meters / actual_resolution)
         
         tiled_ortho_path = os.path.join(ortho_dir, f"{model_id}.tif")
         logging.info(f"Exporting tiled orthomosaic ({tile_size_meters}m = {tile_size_pixels}px tiles)...")
@@ -362,7 +388,7 @@ def build_and_export_orthomosaics(chunk, model_id, base_output_dir, config):
             source_data=Metashape.DataSource.OrthomosaicData,
             image_format=Metashape.ImageFormatTIFF,
             image_compression=compression,
-            resolution=resolution,
+            resolution=resolution,  # 0 = native resolution
             save_world=ortho_config.get('save_world', True),
             save_alpha=ortho_config.get('save_alpha', True),
             split_in_blocks=True,
@@ -411,27 +437,36 @@ def process_chunk(chunk, doc, base_output_dir, config):
     logging.info(f"Processing chunk: {model_id}")
     logging.info(f"{'='*60}")
     
+    # Step 1-2: Export hi-poly model and report
     export_hipoly_model(chunk, model_id, base_output_dir, config)
     export_hipoly_report(chunk, model_id, base_output_dir)
     
+    # Step 3-7: Create lo-poly chunk (decimation, texture)
     lopoly_chunk, cameras_removed = create_lopoly_chunk(chunk, config)
     
     if lopoly_chunk:
+        # Step 8-9: Export lo-poly model and report
         export_lopoly_model(lopoly_chunk, model_id, base_output_dir, config)
         export_lopoly_report(lopoly_chunk, model_id, base_output_dir)
         logging.info("Low-poly chunk exported successfully")
+        
+        # Step 10: Build orthomosaic from LO-POLY chunk (has reduced cameras)
+        build_and_export_orthomosaics(lopoly_chunk, model_id, base_output_dir, config)
     else:
         cameras_removed = 0
-        logging.warning("Failed to create low-poly chunk")
+        logging.warning("Failed to create low-poly chunk, skipping orthomosaic")
     
-    build_and_export_orthomosaics(chunk, model_id, base_output_dir, config)
-    
+    # Step 11: Save PSX with ONLY hi-poly and lo-poly chunks for this model
     output_psx_dir = os.path.join(base_output_dir, "output", "psx")
     os.makedirs(output_psx_dir, exist_ok=True)
     output_psx_path = os.path.join(output_psx_dir, f"{model_id}.psx")
     
-    logging.info(f"Saving PSX with hipoly and lopoly chunks to: {output_psx_path}")
-    doc.save(output_psx_path)
+    # Filter to only save chunks belonging to this model_id
+    chunks_to_save = [c for c in doc.chunks 
+                      if c.label == chunk.label or c.label == f"{chunk.label}_lopoly"]
+    
+    logging.info(f"Saving PSX with {len(chunks_to_save)} chunks (hi-poly + lo-poly) to: {output_psx_path}")
+    doc.save(output_psx_path, chunks=chunks_to_save)
     
     processing_time = time.time() - start_time
     
