@@ -26,6 +26,7 @@ from config import (
 )
 import datetime
 import time
+import shutil
 from utility.file_naming import get_export_paths, clean_model_id
 
 logging.basicConfig(
@@ -467,6 +468,63 @@ def process_chunk(chunk, doc, base_output_dir, config):
     
     logging.info(f"Saving PSX with {len(chunks_to_save)} chunks (hi-poly + lo-poly) to: {output_psx_path}")
     doc.save(output_psx_path, chunks=chunks_to_save)
+    
+    # Step 12: Move frames from processing/frames/ to output/frames/
+    source_frames = os.path.join(DIRECTORIES["frames"], chunk.label)
+    dest_frames = os.path.join(DIRECTORIES["frames_output"], model_id)
+    
+    frames_moved = False
+    if os.path.exists(source_frames):
+        try:
+            # Create parent directory if needed
+            os.makedirs(os.path.dirname(dest_frames), exist_ok=True)
+            # Move frames atomically
+            shutil.move(source_frames, dest_frames)
+            logging.info(f"Moved frames: {source_frames} -> {dest_frames}")
+            frames_moved = True
+        except Exception as e:
+            logging.error(f"Error moving frames: {str(e)}")
+            # Don't fail the entire process if frame move fails
+    else:
+        logging.warning(f"Source frames directory not found: {source_frames}")
+    
+    # Step 13: Update camera photo paths in PSX to point to new frame locations
+    if frames_moved:
+        try:
+            logging.info("Updating camera photo paths in PSX file...")
+            # Reload the PSX we just saved
+            temp_doc = Metashape.Document()
+            temp_doc.open(output_psx_path, read_only=False)
+            
+            # Calculate relative path from PSX location to frames
+            # PSX is in: output/psx/{model_id}.psx
+            # Frames are in: output/frames/{model_id}/
+            # Relative path: ../frames/{model_id}/
+            relative_frames_dir = os.path.join("..", "frames", model_id)
+            
+            paths_updated = 0
+            # For each chunk in the document (hipoly and lopoly)
+            for temp_chunk in temp_doc.chunks:
+                # Update each camera's photo path
+                for camera in temp_chunk.cameras:
+                    if camera.photo and camera.photo.path:
+                        # Get filename from old path
+                        photo_filename = os.path.basename(camera.photo.path)
+                        # Construct new RELATIVE path
+                        new_photo_path = os.path.join(relative_frames_dir, photo_filename)
+                        # Update the path using Metashape API
+                        camera.photo.open(new_photo_path)
+                        paths_updated += 1
+            
+            # Save updated PSX
+            temp_doc.save()
+            logging.info(f"Updated {paths_updated} camera photo paths to relative paths")
+            
+        except Exception as e:
+            logging.error(f"Error updating PSX photo paths: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Don't fail the entire process if path update fails
     
     processing_time = time.time() - start_time
     

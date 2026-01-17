@@ -115,14 +115,15 @@ DIRECTORIES = {
     "processing_root": PROCESSING_DIRECTORY,
     "output_root": OUTPUT_DIRECTORY,
     "video_source": VIDEO_SOURCE_DIRECTORY, # Added video source here
-    "frames": os.path.join(PROCESSING_DIRECTORY, "frames"),
+    "frames": os.path.join(PROCESSING_DIRECTORY, "frames"),  # Step 0 output (processing)
+    "frames_output": os.path.join(OUTPUT_DIRECTORY, "frames"),  # Step 3+ (moved completed)
     "logs": os.path.join(OUTPUT_DIRECTORY, "logs"),
     "psxraw": os.path.join(PROCESSING_DIRECTORY, "psxraw"),
     "orthomosaics": os.path.join(OUTPUT_DIRECTORY, "orthomosaics"),
     "models": os.path.join(OUTPUT_DIRECTORY, "models"),
     "reports": os.path.join(OUTPUT_DIRECTORY, "reports"), # Added reports directory
     "psx_output": os.path.join(OUTPUT_DIRECTORY, "psx"), # Renamed from psx_consolidated
-    "final_outputs": os.path.join(OUTPUT_DIRECTORY, "final")
+    # "final_outputs": os.path.join(OUTPUT_DIRECTORY, "final")  # DEPRECATED - not used
     # Removed adobe_presets, metashape_presets, scripts, config
 }
 
@@ -162,8 +163,8 @@ def create_directories():
     # Only create directories defined within the project (processing/output subfolders)
     for dir_name, dir_path in DIRECTORIES.items():
         if dir_path.startswith(PROJECT_DIR): # Check if path is within the project base
-             # Exclude final_outputs from automatic creation initially
-            if dir_name == "final_outputs":
+             # Exclude frames_output from automatic creation (created dynamically in Step 3)
+            if dir_name == "frames_output":
                 continue
                 
              # Ensure the specific paths for logs and reports are created

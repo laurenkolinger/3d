@@ -1,10 +1,15 @@
 """
 Step 4: Final Exports and Web Publishing
 
-This script:
-1. Prepares decimated models for web viewing
-2. Uploads models to Sketchfab
-3. Creates final exports at high quality for archiving
+DEPRECATED: This step is no longer used in the current workflow.
+Step 3 now produces the final outputs (hipoly/lopoly models and orthomosaics).
+
+This script previously:
+1. Prepared decimated models for web viewing
+2. Uploaded models to Sketchfab
+3. Created final exports at high quality for archiving
+
+Keep for historical reference but not currently maintained or used.
 """
 
 import os
@@ -113,7 +118,12 @@ def decimate_and_upload(chunk, decimate_vertices, sketchfab_settings):
 
 def export_final_assets(chunk, export_settings):
     """
-    Export final high-quality assets for archiving.
+    DEPRECATED: Export final high-quality assets for archiving.
+    
+    This function is no longer used. Use Step 3 outputs instead:
+    - High-poly models: output/models/{MODEL_ID}/{MODEL_ID}_hipoly.obj
+    - Low-poly models: output/models/{MODEL_ID}/{MODEL_ID}_lopoly.obj
+    - Orthomosaics: output/orthomosaics/{MODEL_ID}/
     
     Args:
         chunk (Metashape.Chunk): The chunk to process
@@ -187,7 +197,11 @@ def export_final_assets(chunk, export_settings):
         return False
 
 def main():
-    """Main function to prepare and upload models to Sketchfab."""
+    """
+    DEPRECATED: Main function to prepare and upload models to Sketchfab.
+    
+    This step is no longer used. Step 3 produces the final outputs.
+    """
     # Open the existing document if running in Metashape GUI
     if Metashape.app.document:
         doc = Metashape.app.document

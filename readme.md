@@ -48,14 +48,15 @@ The processing step comes second, but is listed first since is the primary purpo
 │   ├── step1.py                 # Initial 3D processing (most time-consuming)
 │   ├── step2.py                 # Automatic scaling and validation
 │   ├── step3.py                 # Dual model export (high-poly and low-poly)
-│   ├── step4.py                 # Final exports & web publishing
+│   ├── step4.py                 # (DEPRECATED) Final exports & web publishing
 │   ├── legacy/                  # Legacy/archived scripts
 │   └── utility/                 # Utility scripts
 │       ├── enumerate_gpus.py    # GPU detection for Metashape
 │       ├── file_naming.py       # Standardized file naming functions
 │       ├── migrate_csv_to_new_format.py  # CSV format migration utility
 │       ├── reset_full.py        # Complete project reset
-│       └── reset_step1.py       # Reset preserving Steps 0&1
+│       ├── reset_step1.py       # Reset preserving Steps 0&1
+│       └── reset_step2.py       # Reset preserving Steps 0-2
 ├── README.md                     # This documentation
 └── requirements.txt              # Python package dependencies
 ```
@@ -94,11 +95,14 @@ This will create the following directory structure:
 {PROJECT_DIR}/
 ├── video_source/                    # Input video files
 ├── processing/                      # Intermediate processing data
-│   ├── frames/                      # Extracted frames organized by model (Step 0)
+│   ├── frames/                      # Extracted frames (Step 0) - moved to output/frames/ in Step 3
 │   ├── psxraw/                      # Initial PSX files (Step 1)
 │   └── reportsraw/                  # Initial reports (Step 1)
 └── output/                          # All final outputs
-    ├── psx/                         # Scaled PSX files (Step 2) and lo/hi poly PSX (Step 3)
+    ├── frames/                      # Completed frames (moved from processing/ in Step 3)
+    │   └── {MODEL_ID}/              # Each model's frames
+    ├── psx/                         # Individual model PSX files (Step 3)
+    │   └── {MODEL_ID}.psx           # PSX with hipoly and lopoly chunks
     ├── orthomosaics/                # Orthomosaic outputs (Step 3)
     │   └── {MODEL_ID}/              # Each model in its own subdirectory
     │       ├── {MODEL_ID}_full.tif  # Full orthomosaic
@@ -110,9 +114,10 @@ This will create the following directory structure:
     ├── reports/                     # Processing reports (Step 3)
     │   ├── {MODEL_ID}_hipoly.pdf    # High-poly processing report
     │   └── {MODEL_ID}_lopoly.pdf    # Low-poly processing report
-    ├── logs/                        # Processing logs
-    └── final/                       # (DEPRECATED) Final high-resolution outputs (Step 4)
+    └── logs/                        # Processing logs
 ```
+
+**Note on Frame Movement:** Frames start in `processing/frames/{MODEL_ID}/` after Step 0. During Step 3, after successful processing, frames are moved to `output/frames/{MODEL_ID}/`. This provides visual progress tracking - models with frames still in `processing/` are not yet processed through Step 3.
 
 **Important:** Once this directory structure is created, do not rename or move the standard subdirectories (`video_source`, `processing`, `output`). The scripts rely on this specific structure. The only manual change expected within `{PROJECT_DIR}` after setup is adding your video files to the `{PROJECT_DIR}/video_source/` directory.
 
@@ -262,6 +267,9 @@ python src/utility/reset_full.py $PROJECT_DIR
 # Reset after Step 1 (preserves extracted frames and initial PSX files)
 python src/utility/reset_step1.py $PROJECT_DIR
 
+# Reset after Step 2 (preserves frames, PSX files, and scaling)
+python src/utility/reset_step2.py $PROJECT_DIR
+
 # Migrate old CSV to new format (if updating from pre-Dec 2025 workflow)
 python src/utility/migrate_csv_to_new_format.py $PROJECT_DIR/status_*.csv
 
@@ -273,12 +281,13 @@ PYTHONPATH=$PROJECT_DIR/.venv/lib/python3.9/site-packages  /path/to/metashape-pr
 
 We use a clean, standardized naming system for all outputs:
 
-- **Model ID Format:** All file names use the exact Model ID (e.g., `TCRMP20241014_3D_BWR_T2`)
-- **No Suffixes:** Files are named simply as `{MODEL_ID}.ext`
-- **Organized Structure:**
+- Model ID Format: All file names use the exact Model ID (e.g., `TCRMP20241014_3D_BWR_T2`)
+- No Suffixes: Files are named simply as `{MODEL_ID}.ext`
+- Organized Structure:
   - Orthomosaics and models get their own subdirectories: `output/orthomosaics/{MODEL_ID}/` and `output/models/{MODEL_ID}/`
   - Reports are flat in `output/reports/{MODEL_ID}_hipoly.pdf` and `{MODEL_ID}_lopoly.pdf`
-- **Dual Export:** Step 3 produces both high-poly and low-poly models with textures and reports
+  - Frames move to `output/frames/{MODEL_ID}/` after processing
+- Dual Export: Step 3 produces both high-poly and low-poly models with textures and reports
 
 **Example Output:**
 
@@ -338,7 +347,7 @@ python src/step0.py $PROJECT_DIR
 
 Scans `video_source/` for videos, extracts frames to `processing/frames/`, and creates tracking CSV files.
 
-### Step 1: Initial 3D Processing ⏱️ *Most Time-Consuming*
+### Step 1: Initial 3D Processing (Most Time-Consuming)
 
 Performs initial 3D reconstruction using extracted frames. Creates batched PSX files with multiple models grouped for efficiency.
 
@@ -416,8 +425,13 @@ For each Scale=PASS chunk:
 3. **Orthomosaic Generation:**
    - Builds full orthomosaic (single TIFF)
    - Generates tiled orthomosaic (0.5m blocks)
-4. **Final Save:**
-   - Saves PSX with both hipoly and lopoly chunks
+4. **PSX Save:**
+   - Saves PSX with both hipoly and lopoly chunks to `output/psx/{MODEL_ID}.psx`
+5. **Frame Movement:**
+   - Moves frames from `processing/frames/{MODEL_ID}/` to `output/frames/{MODEL_ID}/`
+   - Updates all camera photo paths in the PSX file to point to new relative locations
+   - Uses relative paths (`../frames/{MODEL_ID}/`) so PSX and frames can be moved together
+6. **Tracking Update:**
    - Marks as Scale=DONE in status CSV
 
 **Outputs:**
@@ -428,6 +442,9 @@ For each Scale=PASS chunk:
 - `output/reports/{MODEL_ID}_hipoly.pdf`
 - `output/reports/{MODEL_ID}_lopoly.pdf`
 - `output/psx/{MODEL_ID}.psx` (saved project with both hipoly and lopoly chunks)
+- `output/frames/{MODEL_ID}/` (moved frames with updated paths in PSX)
+
+**Frame Management:** After Step 3 completes, frames for processed models are in `output/frames/`, while unprocessed models still have frames in `processing/frames/`. This provides visual progress tracking.
 
 **GPU Usage:** Controlled by `enable_texture_gpu` and `enable_orthomosaic_gpu` settings in analysis_params.yaml.
 
@@ -440,15 +457,21 @@ After Step 3, manually review the exported models:
 3. Review processing reports for any issues
 4. If corrections needed, adjust in Metashape GUI and re-export
 
-### Step 4: Web Publication (Future)
+### Step 4: Web Publication (DEPRECATED)
 
-**Under development**
+**This step is deprecated and no longer used in the workflow.**
 
-Will process Scale=DONE models for Sketchfab upload:
+Step 3 now produces the final outputs:
+- High-poly models: `output/models/{MODEL_ID}/{MODEL_ID}_hipoly.obj`
+- Low-poly models: `output/models/{MODEL_ID}/{MODEL_ID}_lopoly.obj`
+- Orthomosaics: `output/orthomosaics/{MODEL_ID}/`
 
-- Absolute triangle count threshold (not relative decimation)
-- Optimized for web viewing
-- Automatic upload with metadata
+The step4.py script previously handled:
+- Further decimation for web viewing
+- Sketchfab upload
+- High-resolution archival exports
+
+These features may be re-implemented in the future if needed, but Step 3 outputs are considered the final production-ready assets.
 
 ### Step 5: Output Migration (Future)
 
@@ -470,10 +493,10 @@ These scripts provide helpful utilities for managing the processing environment.
 
 **What it does:**
 
-- 🗑️ Empties `processing/` and `output/` directories completely
-- 📁 **Keeps** empty folder structure (`processing/`, `output/` directories remain)
-- 🗑️ Removes all tracking CSV files
-- 🔒 **Preserves:** `video_source/`, `analysis_params.yaml`, `.venv/`
+- Empties `processing/` and `output/` directories completely
+- Keeps empty folder structure (`processing/`, `output/` directories remain)
+- Removes all tracking CSV files
+- Preserves: `video_source/`, `analysis_params.yaml`, `.venv/`
 
 **Usage:**
 
@@ -489,14 +512,14 @@ python src/utility/reset_full.py /path/to/project
 
 **What it PRESERVES (the time-consuming work):**
 
-- 🔒 Step 0: Extracted frames (`processing/frames/`)
-- 🔒 Step 1: PSX files (`processing/psxraw/`)
-- 🔒 Step 0 & Step 1 tracking status
+- Step 0: Extracted frames (`processing/frames/`)
+- Step 1: PSX files (`processing/psxraw/`)
+- Step 0 & Step 1 tracking status
 
 **What it CLEARS:**
 
-- 🗑️ Step 2+: All `output/` directory contents (consolidated PSX, orthomosaics, models, reports)
-- 🗑️ Step 2+ tracking status (resets to "Step 1 complete")
+- Step 2+: All `output/` directory contents
+- Step 2+ tracking status (resets to "Step 1 complete")
 
 **Usage:**
 
@@ -504,7 +527,33 @@ python src/utility/reset_full.py /path/to/project
 python src/utility/reset_step1.py /path/to/project
 ```
 
-**When to use:** Re-running Step 2 (chunk management) and subsequent steps while preserving hours of Step 0 & Step 1 processing time.
+**When to use:** Re-running Step 2 (automatic scaling) and subsequent steps while preserving hours of Step 0 & Step 1 processing time.
+
+### `src/utility/reset_step2.py`
+
+**Reset After Step 2** - Preserves Steps 0-2, clears Steps 3+ outputs.
+
+**What it PRESERVES:**
+
+- Step 0: Extracted frames (`processing/frames/`)
+- Step 1: PSX files (`processing/psxraw/`)
+- Step 2: Scaling data (Scale=PASS status in tracking and PSX files)
+- All logs
+
+**What it CLEARS:**
+
+- Step 3+: Models, orthomosaics, reports, output PSX files
+- Step 3+: Moved frames (from `output/frames/`)
+- Step 3+ tracking status
+- Resets Scale from "DONE" back to "PASS" (ready to re-export)
+
+**Usage:**
+
+```bash
+python src/utility/reset_step2.py /path/to/project
+```
+
+**When to use:** Re-running Step 3 (model export) with different settings while preserving hours of Steps 0-2 processing time. Useful for testing different decimation factors, texture settings, or orthomosaic parameters.
 
 ### `src/utility/migrate_csv_to_new_format.py`
 

@@ -134,6 +134,7 @@ processing:
       save_colors: true               # Save vertex colors
   
   # Final Exports and Web Publishing (step4.py)
+  # DEPRECATED: Step 4 is no longer used. Step 3 produces final outputs.
   final_exports:
     decimate_vertices: 3000000        # Number of vertices for decimated model (for web)
     sketchfab:
